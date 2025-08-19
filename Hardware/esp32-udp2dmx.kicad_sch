@@ -5027,6 +5027,16 @@
 			(embedded_fonts no)
 		)
 	)
+	(text "https://docs.wiznet.io/Product/iEthernet/W5500/ref-schematic"
+		(exclude_from_sim no)
+		(at 251.46 114.046 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "4934e9ef-75ab-487b-9674-13b6c38b1160")
+	)
 	(junction
 		(at 140.97 110.49)
 		(diameter 0)
