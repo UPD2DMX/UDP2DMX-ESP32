@@ -3,17 +3,18 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+#include "sdkconfig.h"
 
 static const char *TAG = "system_config";
 static const char *NVS_NAMESPACE = "system_cfg";
 
-// Default configuration
+// Default configuration - loaded from Menuconfig (sdkconfig.h)
 static system_config_t default_config = {
     .hardware = {
-        .dmx_tx_pin = 17,
-        .dmx_rx_pin = 16,
-        .dmx_en_pin = 21,
-        .debug_led_gpio = 2},
+        .dmx_tx_pin = CONFIG_DMX_TX_GPIO,
+        .dmx_rx_pin = CONFIG_DMX_RX_GPIO,
+        .dmx_en_pin = CONFIG_DMX_RTS_GPIO,
+        .debug_led_gpio = CONFIG_DEBUG_LED_GPIO},
     .network = {.udp_port = 6454, .max_udp_buffer_size = 1024},
     .dmx = {.universe_size = 512, .fade_interval_ms = 10},
     .system = {.enable_debug_logging = false, .watchdog_timeout_ms = 30000}};

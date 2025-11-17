@@ -1,0 +1,30 @@
+#
+# ESP32-Digital-GW Board Configuration
+# This is a board-specific sdkconfig file for the ESP32-Digital-GW hardware
+# Pin Configuration:
+#   DMX TX:  GPIO 17 (RS485 DI)
+#   DMX RX:  GPIO 16 (RS485 RO)
+#   DMX RTS: GPIO 18 (RS485 Driver Enable/DE)
+#   Debug LED: GPIO 2
+#
+
+#
+# Wi-Fi Configuration
+#
+CONFIG_WIFI_BACKUP_SSID="UDP2DMX-Config"
+CONFIG_WIFI_BACKUP_PASSWORD="12345678"
+CONFIG_WIFI_CONFIG_MODE_TIMEOUT_SEC=300
+# end of Wi-Fi Configuration
+
+#
+# Hardware Configuration
+# ESP32-Digital-GW specific pin assignments
+#
+CONFIG_DMX_TX_GPIO=17
+CONFIG_DMX_RX_GPIO=16
+CONFIG_DMX_RTS_GPIO=18
+CONFIG_DMX_UART_NUM=2
+CONFIG_DMX_BAUDRATE=250000
+CONFIG_WIFI_SWITCH_BUTTON_GPIO=0
+CONFIG_DEBUG_LED_GPIO=2
+# end of Hardware Configuration

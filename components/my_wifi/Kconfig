@@ -1,31 +1,69 @@
 menu "Wi-Fi Configuration"
 
-config WIFI_SSID_1
-    string "SSID network 1"
-    default "WLAN1"
+config WIFI_BACKUP_SSID
+    string "Backup WiFi SSID for Configuration"
+    default "UDP2DMX-Config"
+    help
+        SSID des Config-WiFi für Notfall-Konfiguration.
+        Wird verwendet wenn primäres WiFi nicht erreichbar ist.
 
-config WIFI_PASS_1
-    string "password  network 1"
-    default ""
+config WIFI_BACKUP_PASSWORD
+    string "Backup WiFi Password (empty for open)"
+    default "12345678"
+    help
+        Passwort des Backup-WiFi. Leer lassen für offenes Netzwerk.
 
-config WIFI_SSID_2
-    string "SSID network 2"
-    default "WLAN2"
+config WIFI_CONFIG_MODE_TIMEOUT_SEC
+    int "Config Mode Timeout (seconds)"
+    default 300
+    help
+        Timeout für Config-Mode. Danach wird Neustart versucht.
+        0 = Kein Timeout (bleibt im Config-Mode)
 
-config WIFI_PASS_2
-    string "password  network 2"
-    default ""
+endmenu
 
-config WIFI_SSID_3
-    string "SSID network 3"
-    default "WLAN3"
+menu "Hardware Configuration"
 
-config WIFI_PASS_3
-    string "password  network 3"
-    default ""
+config DMX_TX_GPIO
+    int "DMX TX GPIO Pin"
+    default 17
+    help
+        GPIO Pin für DMX TX (RS485 DI Pin)
+
+config DMX_RX_GPIO
+    int "DMX RX GPIO Pin"
+    default 16
+    help
+        GPIO Pin für DMX RX (RS485 RO Pin)
+
+config DMX_RTS_GPIO
+    int "DMX RTS GPIO Pin (RS485 DE)"
+    default 18
+    help
+        GPIO Pin für DMX RTS / RS485 Driver Enable
+
+config DMX_UART_NUM
+    int "DMX UART Number"
+    default 2
+    help
+        UART Nummer für DMX (0, 1 oder 2)
+
+config DMX_BAUDRATE
+    int "DMX Baudrate"
+    default 250000
+    help
+        Baudrate für DMX (standard: 250000 baud)
 
 config WIFI_SWITCH_BUTTON_GPIO
-    int "GPIO for network selection"
+    int "GPIO for network selection (optional)"
     default 0
+    help
+        GPIO Pin für manuellen Netzwerkwechsel (0 = deaktiviert)
+
+config DEBUG_LED_GPIO
+    int "Debug LED GPIO Pin"
+    default 2
+    help
+        GPIO Pin für Debug/Status LED
 
 endmenu

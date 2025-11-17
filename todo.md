@@ -1,10 +1,12 @@
 Webserver (manuelle Änderung der Rest API endpunkte)
 
-- [] lumitec testen mit Refactored code
+- [x] lumitec testen mit Refactored code
 
-- Menuconfig anpassen Falls sinnvoll:
-  - DMX config 
-  - LED config
-  - Button Config
-  - Wifi
+- Menuconfig anpassen falls sinnvoll:
+  - [x] DMX config 
+  - [x] LED config
+  - [x] Button Config
+  - [x] Wifi
 
+- [x] Webserver zur Konfiguration
+- [x] Pins/RS485 Chip config über menuconfig

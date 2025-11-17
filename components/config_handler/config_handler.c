@@ -73,6 +73,48 @@ esp_err_t save_json(const char *path, const char *json)
     return ESP_OK;
 }
 
+// GET / – serves index.html from SPIFFS
+esp_err_t root_handler(httpd_req_t *req)
+{
+    char *data = read_file(CONFIG_PATH);
+    
+    // Try to serve index.html
+    FILE *f = fopen("/spiffs/index.html", "r");
+    if (f)
+    {
+        fseek(f, 0, SEEK_END);
+        long len = ftell(f);
+        fseek(f, 0, SEEK_SET);
+
+        char *html_data = malloc(len + 1);
+        if (html_data)
+        {
+            fread(html_data, 1, len, f);
+            html_data[len] = '\0';
+            
+            httpd_resp_set_type(req, "text/html");
+            httpd_resp_send(req, html_data, HTTPD_RESP_USE_STRLEN);
+            
+            free(html_data);
+            fclose(f);
+            return ESP_OK;
+        }
+        fclose(f);
+    }
+
+    // Fallback to JSON config
+    if (!data)
+    {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, data, HTTPD_RESP_USE_STRLEN);
+    free(data);
+    return ESP_OK;
+}
+
 // GET /config – returns current JSON file
 esp_err_t get_config_handler(httpd_req_t *req)
 {
@@ -131,6 +173,8 @@ esp_err_t post_config_handler(httpd_req_t *req)
 
     return ESP_OK;
 }
+
+// DEPRECATED: Old SPIFFS-based handlers removed. Use /api/config instead (WiFi NVS-based).
 
 esp_err_t patch_config_handler(httpd_req_t *req)
 {
@@ -218,10 +262,19 @@ void start_rest_server(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.stack_size = 8192;
+    config.max_uri_handlers = 20;  // Need space for all handlers: root, /config (3), /api/wifi (2), /api/system (2), /api/config (2)
 
     httpd_handle_t server = NULL;
     if (httpd_start(&server, &config) == ESP_OK)
     {
+        // Root handler for index.html
+        httpd_uri_t root_uri = {
+            .uri = "/",
+            .method = HTTP_GET,
+            .handler = root_handler,
+            .user_ctx = NULL};
+        httpd_register_uri_handler(server, &root_uri);
+
         httpd_uri_t get_uri = {
             .uri = "/config",
             .method = HTTP_GET,
@@ -243,6 +296,10 @@ void start_rest_server(void)
 
         httpd_register_uri_handler(server, &get_uri);
         httpd_register_uri_handler(server, &post_uri);
-        ESP_LOGI(TAG, "REST-Schnittstelle bereit auf /config");
+        
+        // Register WiFi REST API handlers
+        wifi_rest_register_handlers(server);
+        
+        ESP_LOGI(TAG, "REST-Schnittstelle bereit auf / und /config und /api/wifi");
     }
 }
