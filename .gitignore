@@ -1,6 +1,8 @@
 
 # ESP-IDF build artifacts
 /build/*
+/build_*/*
+/codm_4mb/*
 /CMakeFiles/*
 /CMakeCache.txt
 /cmake_install.cmake
@@ -9,6 +11,8 @@
 # ESP-IDF configuration files
 sdkconfig
 sdkconfig.old
+# Keep chip-specific sdkconfig files
+!sdkconfig.default.*
 
 # Project-specific build artifacts
 *.bin
