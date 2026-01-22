@@ -1,5 +1,5 @@
 {
-    "idf.portWin": "COM12",
+    "idf.portWin": "COM7",
     "files.associations": {
         "esp_dmx.h": "c"
     },
