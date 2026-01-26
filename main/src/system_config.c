@@ -15,8 +15,37 @@ static system_config_t default_config = {
         .dmx_rx_pin = CONFIG_DMX_RX_GPIO,
         .dmx_en_pin = CONFIG_DMX_RTS_GPIO,
         .debug_led_gpio = CONFIG_DEBUG_LED_GPIO},
+#ifdef CONFIG_ENABLE_ETHERNET
+    .ethernet = {
+        .enable = true,
+        .mdc_gpio = CONFIG_ETH_MDC_GPIO,
+        .mdio_gpio = CONFIG_ETH_MDIO_GPIO,
+        .phy_addr = CONFIG_ETH_PHY_ADDR,
+        .phy_power_gpio = CONFIG_ETH_PHY_POWER_GPIO,
+        .phy_rst_gpio = CONFIG_ETH_PHY_RST_GPIO,
+#if defined(CONFIG_ETH_CLOCK_GPIO0_IN)
+        .clock_mode = 0,
+#elif defined(CONFIG_ETH_CLOCK_GPIO0_OUT)
+        .clock_mode = 1,
+#elif defined(CONFIG_ETH_CLOCK_GPIO16_OUT)
+        .clock_mode = 2,
+#elif defined(CONFIG_ETH_CLOCK_GPIO17_OUT)
+        .clock_mode = 3,
+#endif
+    },
+#else
+    .ethernet = {
+        .enable = false,
+        .mdc_gpio = -1,
+        .mdio_gpio = -1,
+        .phy_addr = 0,
+        .phy_power_gpio = -1,
+        .phy_rst_gpio = -1,
+        .clock_mode = 0,
+    },
+#endif
     .network = {.udp_port = 6454, .max_udp_buffer_size = 1024},
-    .dmx = {.universe_size = 512, .fade_interval_ms = 10},
+    .dmx = {.universe_size = 512, .fade_interval_ms = CONFIG_DMX_FADE_INTERVAL_MS},
     .system = {.enable_debug_logging = false, .watchdog_timeout_ms = 30000}};
 
 static system_config_t current_config;
@@ -143,6 +172,22 @@ bool system_config_validate(const system_config_t *config)
         return false;
     }
 
+    // Validate Ethernet pins if enabled
+    if (config->ethernet.enable)
+    {
+        if (config->ethernet.mdc_gpio < 0 || config->ethernet.mdc_gpio > 39 ||
+            config->ethernet.mdio_gpio < 0 || config->ethernet.mdio_gpio > 39)
+        {
+            ESP_LOGW(TAG, "Invalid Ethernet pin configuration");
+            return false;
+        }
+        if (config->ethernet.phy_addr < 0 || config->ethernet.phy_addr > 31)
+        {
+            ESP_LOGW(TAG, "Invalid PHY address: %d", config->ethernet.phy_addr);
+            return false;
+        }
+    }
+
     // Validate network settings
     if (config->network.udp_port == 0)
     {
@@ -193,6 +238,22 @@ void system_config_print(const system_config_t *config)
     ESP_LOGI(TAG, "  DMX RX Pin: %d", config->hardware.dmx_rx_pin);
     ESP_LOGI(TAG, "  DMX EN Pin: %d", config->hardware.dmx_en_pin);
     ESP_LOGI(TAG, "  Debug LED GPIO: %d", config->hardware.debug_led_gpio);
+
+    if (config->ethernet.enable)
+    {
+        ESP_LOGI(TAG, "Ethernet:");
+        ESP_LOGI(TAG, "  Enabled: Yes");
+        ESP_LOGI(TAG, "  MDC GPIO: %d", config->ethernet.mdc_gpio);
+        ESP_LOGI(TAG, "  MDIO GPIO: %d", config->ethernet.mdio_gpio);
+        ESP_LOGI(TAG, "  PHY Address: %d", config->ethernet.phy_addr);
+        ESP_LOGI(TAG, "  PHY Power GPIO: %d", config->ethernet.phy_power_gpio);
+        ESP_LOGI(TAG, "  PHY Reset GPIO: %d", config->ethernet.phy_rst_gpio);
+        ESP_LOGI(TAG, "  Clock Mode: %d", config->ethernet.clock_mode);
+    }
+    else
+    {
+        ESP_LOGI(TAG, "Ethernet: Disabled");
+    }
 
     ESP_LOGI(TAG, "Network:");
     ESP_LOGI(TAG, "  UDP Port: %d", config->network.udp_port);

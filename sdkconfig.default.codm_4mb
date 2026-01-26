@@ -1472,6 +1472,24 @@ CONFIG_WIFI_CONFIG_MODE_TIMEOUT_SEC=300
 # end of Wi-Fi Configuration
 
 #
+# Board Configuration
+#
+CONFIG_BOARD_CODM_4MB=y
+# end of Board Configuration
+
+#
+# Ethernet Configuration
+#
+CONFIG_ENABLE_ETHERNET=y
+CONFIG_ETH_MDC_GPIO=23
+CONFIG_ETH_MDIO_GPIO=18
+CONFIG_ETH_PHY_ADDR=0
+CONFIG_ETH_PHY_POWER_GPIO=-1
+CONFIG_ETH_PHY_RST_GPIO=-1
+CONFIG_ETH_CLOCK_GPIO17_OUT=y
+# end of Ethernet Configuration
+
+#
 # Hardware Configuration
 #
 CONFIG_DMX_TX_GPIO=32

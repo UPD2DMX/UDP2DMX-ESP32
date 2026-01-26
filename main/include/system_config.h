@@ -19,6 +19,17 @@ typedef struct {
         int debug_led_gpio;
     } hardware;
     
+    // Ethernet configuration
+    struct {
+        bool enable;
+        int mdc_gpio;
+        int mdio_gpio;
+        int phy_addr;
+        int phy_power_gpio;
+        int phy_rst_gpio;
+        int clock_mode; // 0=GPIO0_IN, 1=GPIO0_OUT, 2=GPIO16_OUT, 3=GPIO17_OUT
+    } ethernet;
+    
     // Network configuration
     struct {
         uint16_t udp_port;

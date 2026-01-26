@@ -23,6 +23,7 @@ Webserver (manuelle Änderung der Rest API endpunkte)
 # Platine
 - Benötigt die Platine eine Power LED die Dauerhaft an ist? 
   - Eventuell nur einschalten wenn Knopf gedrückt? 
+  - Ansonsten dunklerer LED auch in Ordnung. 
 
 - Status LED ist leicht an beim flashen. Eventuell Diode ergänzen. 
 - Reset Button notwendig? 

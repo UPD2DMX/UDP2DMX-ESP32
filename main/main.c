@@ -19,11 +19,11 @@
 #include "my_led.h"
 #include "my_config.h"
 #include "config_handler.h"
+#include "system_config.h"
 
-#define TX_PIN 17
-#define RX_PIN 16
-#define EN_PIN 21
-#define DEBUG_LED_GPIO 2
+#ifdef CONFIG_ENABLE_ETHERNET
+#include "my_ethernet.h"
+#endif
 
 #define DMX_UNIVERSE_SIZE DMX_PACKET_SIZE
 #define UDP_PORT 6454
@@ -625,19 +625,92 @@ void app_main()
         return;
     }
 
-    my_led_init(DEBUG_LED_GPIO);
-    my_wifi_init();
+    // Initialize system configuration
+    esp_err_t err = system_config_init();
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to initialize system config: %s", esp_err_to_name(err));
+        return;
+    }
+
+    const system_config_t *sys_config = system_config_get();
+    system_config_print(sys_config);
+
+    my_led_init(sys_config->hardware.debug_led_gpio);
+
+    // Network initialization - prefer Ethernet over WiFi
+    bool network_ready = false;
+
+#ifdef CONFIG_ENABLE_ETHERNET
+    if (sys_config->ethernet.enable)
+    {
+        ESP_LOGI(TAG, "Initializing Ethernet...");
+        err = my_ethernet_init(
+            sys_config->ethernet.mdc_gpio,
+            sys_config->ethernet.mdio_gpio,
+            sys_config->ethernet.phy_addr,
+            sys_config->ethernet.phy_power_gpio,
+            sys_config->ethernet.phy_rst_gpio,
+            sys_config->ethernet.clock_mode,
+            "udp2dmx-eth");
+
+        if (err == ESP_OK)
+        {
+            err = my_ethernet_start();
+            if (err == ESP_OK)
+            {
+                ESP_LOGI(TAG, "Ethernet started successfully");
+                // Wait a bit for Ethernet to connect
+                vTaskDelay(pdMS_TO_TICKS(3000));
+                
+                if (my_ethernet_is_connected())
+                {
+                    char ip_str[16];
+                    if (my_ethernet_get_ip(ip_str))
+                    {
+                        ESP_LOGI(TAG, "Ethernet connected with IP: %s", ip_str);
+                        network_ready = true;
+                    }
+                }
+                else
+                {
+                    ESP_LOGW(TAG, "Ethernet link not established; will fall back to WiFi");
+                }
+            }
+            else
+            {
+                ESP_LOGW(TAG, "Failed to start Ethernet: %s", esp_err_to_name(err));
+            }
+        }
+        else
+        {
+            ESP_LOGW(TAG, "Failed to initialize Ethernet: %s", esp_err_to_name(err));
+        }
+    }
+#endif
+
+    // Start WiFi only if Ethernet is not connected
+    if (!network_ready)
+    {
+        ESP_LOGI(TAG, "Starting WiFi (Ethernet not connected)...");
+        my_wifi_init();
+        network_ready = true;
+    }
+    else
+    {
+        ESP_LOGI(TAG, "Ethernet active - WiFi skipped");
+    }
 
     // DMX Setup
     dmx_config_t config = DMX_CONFIG_DEFAULT;
-    esp_err_t err = dmx_driver_install(dmx_num, &config, NULL, 0);
+    err = dmx_driver_install(dmx_num, &config, NULL, 0);
     if (err != ESP_OK)
     {
         ESP_LOGE(TAG, "DMX driver install failed: %s", esp_err_to_name(err));
         return;
     }
 
-    err = dmx_set_pin(dmx_num, TX_PIN, RX_PIN, EN_PIN);
+    err = dmx_set_pin(dmx_num, sys_config->hardware.dmx_tx_pin, sys_config->hardware.dmx_rx_pin, sys_config->hardware.dmx_en_pin);
     if (err != ESP_OK)
     {
         ESP_LOGE(TAG, "DMX pin setup failed: %s", esp_err_to_name(err));

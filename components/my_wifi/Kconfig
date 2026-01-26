@@ -1,3 +1,104 @@
+menu "Board Configuration"
+
+choice BOARD_TYPE
+    prompt "Select Board Type"
+    default BOARD_GENERIC
+    help
+        Select the target board type.
+        Different boards have different GPIO configurations.
+
+config BOARD_GENERIC
+    bool "Generic ESP32 Board"
+    help
+        Generic ESP32 board with default pin configuration
+
+config BOARD_CODM_4MB
+    bool "CODM 4MB Board with Ethernet"
+    help
+        CODM board with 4MB flash and LAN8720A Ethernet support
+
+endchoice
+
+endmenu
+
+menu "Ethernet Configuration"
+    depends on BOARD_CODM_4MB
+
+config ENABLE_ETHERNET
+    bool "Enable Ethernet Support"
+    default y
+    depends on BOARD_CODM_4MB
+    help
+        Enable LAN8720A Ethernet support on CODM board.
+        When Ethernet is active, WiFi will be disabled.
+
+config ETH_MDC_GPIO
+    int "Ethernet MDC GPIO"
+    default 23
+    depends on ENABLE_ETHERNET
+    help
+        GPIO pin for Ethernet MDC (Management Data Clock)
+
+config ETH_MDIO_GPIO
+    int "Ethernet MDIO GPIO"
+    default 18
+    depends on ENABLE_ETHERNET
+    help
+        GPIO pin for Ethernet MDIO (Management Data I/O)
+
+config ETH_PHY_ADDR
+    int "Ethernet PHY Address"
+    default 0
+    range 0 31
+    depends on ENABLE_ETHERNET
+    help
+        PHY address of LAN8720A (typically 0 or 1)
+
+config ETH_PHY_POWER_GPIO
+    int "Ethernet PHY Power GPIO (-1 to disable)"
+    default -1
+    depends on ENABLE_ETHERNET
+    help
+        GPIO pin for PHY power enable. Set to -1 if not used.
+
+config ETH_PHY_RST_GPIO
+    int "Ethernet PHY Reset GPIO (-1 to disable)"
+    default -1
+    depends on ENABLE_ETHERNET
+    help
+        GPIO pin for PHY reset. Set to -1 if not used.
+
+choice ETH_CLOCK_MODE
+    prompt "Ethernet Clock Mode"
+    default ETH_CLOCK_GPIO0_IN
+    depends on ENABLE_ETHERNET
+    help
+        Select Ethernet clock mode for LAN8720A
+
+config ETH_CLOCK_GPIO0_IN
+    bool "GPIO0 Input (50MHz from external oscillator)"
+    help
+        Use 50MHz clock from external oscillator on GPIO0
+
+config ETH_CLOCK_GPIO0_OUT
+    bool "GPIO0 Output (50MHz from ESP32)"
+    help
+        ESP32 generates 50MHz clock on GPIO0
+
+config ETH_CLOCK_GPIO16_OUT
+    bool "GPIO16 Output (50MHz from ESP32)"
+    help
+        ESP32 generates 50MHz clock on GPIO16
+
+config ETH_CLOCK_GPIO17_OUT
+    bool "GPIO17 Output (50MHz from ESP32)"
+    help
+        ESP32 generates 50MHz clock on GPIO17
+
+endchoice
+
+endmenu
+
 menu "Wi-Fi Configuration"
 
 config WIFI_BACKUP_SSID
@@ -53,6 +154,13 @@ config DMX_BAUDRATE
     default 250000
     help
         Baudrate für DMX (standard: 250000 baud)
+
+config DMX_FADE_INTERVAL_MS
+    int "DMX Fade Interval (ms)"
+    default 10
+    range 1 1000
+    help
+        Aktualisierungsintervall für das Fading in Millisekunden (1-1000).
 
 config WIFI_SWITCH_BUTTON_GPIO
     int "GPIO for network selection (optional)"
