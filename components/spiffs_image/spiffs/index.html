@@ -420,8 +420,15 @@
 
                 const data = await response.json();
 
-                document.getElementById('statusValue').textContent = data.wifi_connected ?
-                    `🟢 Connected (${data.wifi_ssid})` : '🔴 Not Connected';
+                // Determine connection status and type
+                let statusText = '🔴 Not Connected';
+                if (data.connection_type === 'LAN') {
+                    statusText = `🟢 Connected (LAN)`;
+                } else if (data.connection_type === 'WiFi') {
+                    statusText = `🟢 Connected (WiFi - ${data.wifi_ssid})`;
+                }
+
+                document.getElementById('statusValue').textContent = statusText;
                 document.getElementById('ipValue').textContent = data.ip_address;
             } catch (error) {
                 console.error('Error loading status:', error);

@@ -20,6 +20,10 @@
 #include "my_config.h"
 #include "config_handler.h"
 
+#ifdef CONFIG_ENABLE_ETHERNET
+#include "my_ethernet.h"
+#endif
+
 static const char *TAG = "main";
 
 // System initialization functions
@@ -118,13 +122,72 @@ static esp_err_t init_system_components(void)
     // Initialize LED
     my_led_init(config->hardware.debug_led_gpio);
 
-    // Initialize WiFi
-    my_wifi_init();
-
-    // Initialize SPIFFS
+    // Initialize SPIFFS first to load hostname later
     spiffs_init();
 
-    // Load configuration from SPIFFS
+    // Try Ethernet first (if enabled)
+    bool network_ready = false;
+    
+#ifdef CONFIG_ENABLE_ETHERNET
+    if (config->ethernet.enable)
+    {
+        ESP_LOGI(TAG, "Initializing Ethernet...");
+        esp_err_t err = my_ethernet_init(
+            config->ethernet.mdc_gpio,
+            config->ethernet.mdio_gpio,
+            config->ethernet.phy_addr,
+            config->ethernet.phy_power_gpio,
+            config->ethernet.phy_rst_gpio,
+            config->ethernet.clock_mode,
+            "udp2dmx");  // Use default, will be updated after config load
+
+        if (err == ESP_OK)
+        {
+            err = my_ethernet_start();
+            if (err == ESP_OK)
+            {
+                ESP_LOGI(TAG, "Ethernet started successfully");
+                // Wait a bit for Ethernet to connect
+                vTaskDelay(pdMS_TO_TICKS(3000));
+                
+                if (my_ethernet_is_connected())
+                {
+                    char ip_str[16];
+                    if (my_ethernet_get_ip(ip_str))
+                    {
+                        ESP_LOGI(TAG, "Ethernet connected with IP: %s", ip_str);
+                        network_ready = true;
+                    }
+                }
+                else
+                {
+                    ESP_LOGW(TAG, "Ethernet link not established; will fall back to WiFi");
+                }
+            }
+            else
+            {
+                ESP_LOGW(TAG, "Failed to start Ethernet: %s", esp_err_to_name(err));
+            }
+        }
+        else
+        {
+            ESP_LOGW(TAG, "Failed to initialize Ethernet: %s", esp_err_to_name(err));
+        }
+    }
+#endif
+
+    // Initialize WiFi only if Ethernet is not connected
+    if (!network_ready)
+    {
+        ESP_LOGI(TAG, "Starting WiFi (Ethernet not available or not connected)...");
+        my_wifi_init();
+    }
+    else
+    {
+        ESP_LOGI(TAG, "Network ready via Ethernet, skipping WiFi initialization");
+    }
+
+    // Load configuration from SPIFFS (hostname will be set via my_wifi_set_hostname)
     config_load_from_spiffs("/spiffs/config.json");
 
     return ESP_OK;

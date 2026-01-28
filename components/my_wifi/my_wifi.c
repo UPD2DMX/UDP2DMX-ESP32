@@ -143,39 +143,41 @@ void my_wifi_set_hostname(const char *new_hostname)
         return;
     }
 
-    esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-    if (!netif)
-    {
-        ESP_LOGE(TAG, "esp_netif not found");
-        return;
-    }
-
-    const char *old_hostname = NULL;
-    if (esp_netif_get_hostname(netif, &old_hostname) != ESP_OK)
-    {
-        ESP_LOGW(TAG, "Could not read old hostname");
-        old_hostname = NULL;
-    }
-
-    // Only update if hostname changes
-    if (old_hostname && strcmp(old_hostname, new_hostname) == 0)
-    {
-        ESP_LOGI(TAG, "Hostname is already: %s", old_hostname);
-        return;
-    }
-
-    // Store and set hostname
+    // Store hostname
     strncpy(current_hostname, new_hostname, sizeof(current_hostname));
     current_hostname[sizeof(current_hostname) - 1] = '\0';
 
-    esp_netif_set_hostname(netif, current_hostname);
-    ESP_LOGI(TAG, "Hostname changed: %s", current_hostname);
+    // Update WiFi interface hostname (if available)
+    esp_netif_t *wifi_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (wifi_netif)
+    {
+        esp_netif_set_hostname(wifi_netif, current_hostname);
+        ESP_LOGI(TAG, "WiFi hostname set to: %s", current_hostname);
+    }
 
-    // Update mDNS
+    // Update Ethernet interface hostname (if available)
+    esp_netif_t *eth_netif = esp_netif_get_handle_from_ifkey("ETH_DEF");
+    if (eth_netif)
+    {
+        esp_netif_set_hostname(eth_netif, current_hostname);
+        ESP_LOGI(TAG, "Ethernet hostname set to: %s", current_hostname);
+    }
+
+    // Update mDNS (reinitialize to ensure hostname is updated on all interfaces)
     mdns_free();
-    mdns_init();
-    mdns_hostname_set(current_hostname);
-    ESP_LOGI(TAG, "mDNS hostname updated to: %s", current_hostname);
+    vTaskDelay(pdMS_TO_TICKS(100));  // Small delay
+    
+    if (mdns_init() == ESP_OK)
+    {
+        mdns_hostname_set(current_hostname);
+        mdns_instance_name_set("DMX Controller");
+        mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+        ESP_LOGI(TAG, "mDNS hostname updated to: %s", current_hostname);
+    }
+    else
+    {
+        ESP_LOGW(TAG, "mDNS update failed");
+    }
 }
 
 void start_mdns_service(void)
@@ -338,6 +340,7 @@ static void on_wifi_event(void *arg, esp_event_base_t event_base,
         wifi_event_sta_disconnected_t *disconn = (wifi_event_sta_disconnected_t *)event_data;
         ESP_LOGW(TAG, "WiFi disconnected (reason %d: %s)", disconn->reason, reason_str(disconn->reason));
         my_led_set_wifi_status(false);
+        my_led_set_connection_type(CONNECTION_TYPE_NONE);
         is_connecting = false;
         wifi_connected = false;
         xTaskNotifyGive(reconnect_task_handle);
@@ -349,6 +352,7 @@ static void on_wifi_event(void *arg, esp_event_base_t event_base,
         is_connecting = false;
         wifi_connected = true;
         my_led_set_wifi_status(true);
+        my_led_set_connection_type(CONNECTION_TYPE_WIFI);
         start_mdns_service();
     }
 }

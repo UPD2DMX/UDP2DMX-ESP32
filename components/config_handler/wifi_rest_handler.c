@@ -9,6 +9,8 @@
 #include <string.h>
 #include <inttypes.h>
 #include "my_wifi.h"
+#include "my_led.h"
+#include "my_ethernet.h"
 
 static const char *TAG = "wifi_rest";
 
@@ -25,11 +27,24 @@ static bool wifi_is_connected(void)
 }
 
 /**
- * @brief Get current WiFi IP address
+ * @brief Get current IP address (WiFi or Ethernet)
  */
 static void wifi_get_ip_address(char *ip_str, size_t len)
 {
-    esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    esp_netif_t *netif = NULL;
+    
+    // Try Ethernet first
+    if (my_ethernet_is_connected())
+    {
+        netif = esp_netif_get_handle_from_ifkey("ETH_DEF");
+    }
+    
+    // Fall back to WiFi if Ethernet not connected
+    if (!netif)
+    {
+        netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    }
+    
     if (!netif)
     {
         strncpy(ip_str, "0.0.0.0", len);
@@ -69,6 +84,25 @@ static void wifi_get_ssid(char *ssid, size_t len)
     {
         strncpy(ssid, (const char *)wifi_config.sta.ssid, len - 1);
         ssid[len - 1] = '\0';
+    }
+}
+
+/**
+ * @brief Get connection type (LAN or WiFi)
+ */
+static const char *get_connection_type_string(void)
+{
+    if (my_ethernet_is_connected())
+    {
+        return "LAN";
+    }
+    else if (wifi_is_connected())
+    {
+        return "WiFi";
+    }
+    else
+    {
+        return "None";
     }
 }
 
@@ -126,7 +160,9 @@ esp_err_t wifi_get_config_handler(httpd_req_t *req)
     cJSON_AddStringToObject(primary_wifi, "dns", dns_buf);
 
     cJSON_AddItemToObject(root, "primary_wifi", primary_wifi);
-    cJSON_AddBoolToObject(root, "connected", wifi_is_connected());
+    cJSON_AddBoolToObject(root, "wifi_connected", wifi_is_connected());
+    cJSON_AddStringToObject(root, "connection_type", get_connection_type_string());
+    cJSON_AddBoolToObject(root, "lan_connected", my_ethernet_is_connected());
     cJSON_AddStringToObject(root, "current_ip", ip_str);
     cJSON_AddStringToObject(root, "current_ssid", ssid);
     cJSON_AddNumberToObject(root, "rssi", wifi_get_rssi());
@@ -282,8 +318,10 @@ esp_err_t system_info_handler(httpd_req_t *req)
 
     cJSON_AddStringToObject(root, "hostname", "udp2dmx");
     cJSON_AddNumberToObject(root, "uptime_seconds", esp_timer_get_time() / 1000000);
-    cJSON_AddStringToObject(root, "wifi_mode", "STA");
+    cJSON_AddStringToObject(root, "connection_type", get_connection_type_string());
     cJSON_AddBoolToObject(root, "wifi_connected", wifi_is_connected());
+    cJSON_AddBoolToObject(root, "lan_connected", my_ethernet_is_connected());
+    cJSON_AddStringToObject(root, "wifi_mode", "STA");
     cJSON_AddStringToObject(root, "wifi_ssid", (const char *)wifi_config.sta.ssid);
     cJSON_AddStringToObject(root, "ip_address", ip_str);
     cJSON_AddStringToObject(root, "mac_address", mac_str);

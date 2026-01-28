@@ -11,8 +11,14 @@ Webserver (manuelle Änderung der Rest API endpunkte)
 - [x] Webserver zur Konfiguration
 - [x] Pins/RS485 Chip config über menuconfig
 
-- Ethernet
-- RS485 - 1 für DMX
+- [] Was ist mit den Ethernet LEDs? 
+
+- [] OTA
+- [] RS485 -2 
+
+Muss getestet werden: 
+- []Ethernet
+- []RS485 - 1 für DMX
 
 
 - github seite auf Webpage
@@ -24,6 +30,9 @@ Webserver (manuelle Änderung der Rest API endpunkte)
 - Benötigt die Platine eine Power LED die Dauerhaft an ist? 
   - Eventuell nur einschalten wenn Knopf gedrückt? 
   - Ansonsten dunklerer LED auch in Ordnung. 
+
+- Ethernet
+  - Via USB Spannungsversorgung evtl. nicht ganz ausreichend. USB muss neu Verbunden werden damit eine sichere Netzwerkverbindung hergestellt werden kann.
 
 - Status LED ist leicht an beim flashen. Eventuell Diode ergänzen. 
 - Reset Button notwendig? 

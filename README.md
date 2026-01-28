@@ -170,11 +170,13 @@ The device expects UDP packets in the following formats:
 
 | Condition                               | LED Behavior                | Description                                   |
 | --------------------------------------- | --------------------------- | --------------------------------------------- |
-| **Wi-Fi connected**<br>**No DMX error** | **Off (constantly)**        | Normal operation                              |
-| **Wi-Fi disconnected**                  | **Slow blinking**           | 500 ms on / 500 ms off                        |
+| **Connected (LAN or WiFi)**<br>**No DMX error** | **Off (constantly)**        | Normal operation                              |
+| **Not connected** (LAN & WiFi)          | **Slow blinking**           | 500 ms on / 500 ms off                        |
 | **DMX error active**                    | **Fast blinking**           | 100 ms on / 100 ms off                        |
 | **User action**<br>(e.g. Wi-Fi switch)  | **Short blinking sequence** | `n` blinks with `delay_ms` (e.g. 2× 50 ms)    |
-| **Network selection via button**        | **1–3 blinks**              | Number of blinks = selected network index + 1 |
+| **Connecting to LAN**                   | **3 short blinks**          | Signals successful LAN connection             |
+| **Connecting to WiFi**                  | **2 short blinks**          | Signals successful WiFi connection            |
+| **Receiving DMX data**                  | **1 short blink**           | Brief signal when DMX packet is received      |
 
 ---
 

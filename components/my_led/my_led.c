@@ -7,6 +7,7 @@
 static int led_gpio = 2;
 static volatile bool wifi_connected = false;
 static volatile bool dmx_error = false;
+static volatile connection_type_t connection_type = CONNECTION_TYPE_NONE;
 static SemaphoreHandle_t blink_mutex;
 static int blink_count = 0;
 static int blink_delay = 0;
@@ -16,6 +17,7 @@ static void led_status_task(void *arg)
 {
     while (1)
     {
+        // User action (blinking sequence) has priority
         if (blink_count > 0)
         {
             for (int i = 0; i < blink_count; i++)
@@ -29,18 +31,29 @@ static void led_status_task(void *arg)
             vTaskDelay(pdMS_TO_TICKS(700));
             blink_count = 0;
         }
-        else if (wifi_connected && !dmx_error)
+        // DMX error has higher priority than connection status
+        else if (dmx_error)
         {
-            gpio_set_level(led_gpio, 0); // LED aus
+            // Fast blinking: 100ms on / 100ms off
+            gpio_set_level(led_gpio, 1);
+            vTaskDelay(pdMS_TO_TICKS(100));
+            gpio_set_level(led_gpio, 0);
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        // Connected (any type: WiFi or LAN): LED off
+        else if (wifi_connected || connection_type == CONNECTION_TYPE_LAN)
+        {
+            gpio_set_level(led_gpio, 0);  // LED aus
             vTaskDelay(pdMS_TO_TICKS(500));
         }
+        // Not connected: Slow blinking
         else
         {
-            int delay = dmx_error ? 100 : 500;
+            // Slow blinking: 500ms on / 500ms off
             gpio_set_level(led_gpio, 1);
-            vTaskDelay(pdMS_TO_TICKS(delay));
+            vTaskDelay(pdMS_TO_TICKS(500));
             gpio_set_level(led_gpio, 0);
-            vTaskDelay(pdMS_TO_TICKS(delay));
+            vTaskDelay(pdMS_TO_TICKS(500));
         }
     }
 }
@@ -92,6 +105,22 @@ void my_led_set_wifi_status(bool connected)
     if (connected == true)
         my_led_blink(2, 50);
     wifi_connected = connected;
+}
+
+// Verbindungstyp aktualisieren (LAN/WiFi)
+void my_led_set_connection_type(connection_type_t type)
+{
+    connection_type = type;
+    
+    // Signal die Verbindungsart: 3x blink für LAN, 2x für WiFi
+    if (type == CONNECTION_TYPE_LAN)
+    {
+        my_led_blink(3, 80);  // 3 blinks für LAN
+    }
+    else if (type == CONNECTION_TYPE_WIFI)
+    {
+        my_led_blink(2, 80);  // 2 blinks für WiFi
+    }
 }
 
 // DMX-Fehlerstatus aktualisieren

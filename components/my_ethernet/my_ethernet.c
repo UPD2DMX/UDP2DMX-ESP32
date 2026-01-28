@@ -10,6 +10,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
+#include "my_led.h"
 
 static const char *TAG = "my_ethernet";
 
@@ -43,6 +44,7 @@ static void eth_event_handler(void *arg, esp_event_base_t event_base,
             xEventGroupSetBits(eth_event_group, ETH_CONNECTED_BIT);
         }
         eth_connected = true;
+        my_led_set_connection_type(CONNECTION_TYPE_LAN);
         break;
 
     case ETHERNET_EVENT_DISCONNECTED:
@@ -52,6 +54,7 @@ static void eth_event_handler(void *arg, esp_event_base_t event_base,
             xEventGroupClearBits(eth_event_group, ETH_CONNECTED_BIT | ETH_GOT_IP_BIT);
         }
         eth_connected = false;
+        my_led_set_connection_type(CONNECTION_TYPE_NONE);
         break;
 
     case ETHERNET_EVENT_START:
@@ -93,17 +96,29 @@ static void got_ip_event_handler(void *arg, esp_event_base_t event_base,
             xEventGroupSetBits(eth_event_group, ETH_GOT_IP_BIT);
         }
 
-        // Initialize mDNS
-        if (mdns_init() == ESP_OK)
+        // Initialize/update mDNS
+        esp_err_t ret = mdns_init();
+        if (ret == ESP_OK)
         {
-            mdns_hostname_set(current_hostname);
-            mdns_instance_name_set(current_hostname);
-            ESP_LOGI(TAG, "mDNS started with hostname: %s.local", current_hostname);
+            ESP_LOGI(TAG, "mDNS initialized");
+        }
+        else if (ret == ESP_ERR_INVALID_STATE)
+        {
+            ESP_LOGI(TAG, "mDNS already running");
         }
         else
         {
-            ESP_LOGW(TAG, "mDNS init failed");
+            ESP_LOGW(TAG, "mDNS init failed: %s", esp_err_to_name(ret));
         }
+        
+        // Always set/update hostname and service
+        mdns_hostname_set(current_hostname);
+        mdns_instance_name_set("DMX Controller");
+        
+        // Add HTTP service for web interface
+        mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+        
+        ESP_LOGI(TAG, "mDNS configured: %s.local", current_hostname);
     }
 }
 
