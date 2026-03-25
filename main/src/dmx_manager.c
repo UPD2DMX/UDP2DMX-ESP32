@@ -5,6 +5,7 @@
 #include <math.h>
 #include "esp_log.h"
 #include "esp_dmx.h"
+#include "sdkconfig.h"
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -15,7 +16,8 @@ static const char *TAG = "dmx_manager";
 // DMX state management
 static bool dmx_initialized = false;
 static dmx_port_t dmx_port = DMX_NUM_1;
-static uint8_t dmx_data[DMX_UNIVERSE_SIZE] = {0};
+// esp_dmx expects slot 0 = start code, slots 1..512 = channels
+static uint8_t dmx_data[DMX_UNIVERSE_SIZE + 1] = {0};
 static SemaphoreHandle_t dmx_mutex = NULL;
 
 // Fade state management
@@ -28,7 +30,7 @@ typedef struct
     TickType_t start_time;
 } fade_state_t;
 
-static fade_state_t fade_states[DMX_UNIVERSE_SIZE] = {0};
+static fade_state_t fade_states[DMX_UNIVERSE_SIZE + 1] = {0};
 static TaskHandle_t fade_task_handle = NULL;
 
 // Private function declarations
@@ -40,15 +42,25 @@ static void stop_fade(int channel);
 // Bounds checking functions
 bool dmx_is_channel_valid(int channel, int count)
 {
-    // Original bug compatibility: channel is used directly as array index
-    // So valid channels are 1 to (DMX_UNIVERSE_SIZE - count)
-    return (channel >= 1 && channel <= DMX_UNIVERSE_SIZE - count);
+    if (count < 1)
+    {
+        return false;
+    }
+
+    // Channels are 1..DMX_UNIVERSE_SIZE inclusive
+    if (channel < 1 || channel > DMX_UNIVERSE_SIZE)
+    {
+        return false;
+    }
+
+    // Ensure end channel stays within range
+    return (channel + count - 1) <= DMX_UNIVERSE_SIZE;
 }
 
 static bool is_array_index_valid(int index)
 {
-    // Original bug compatibility: index 0 is unused, valid indexes are 1 to DMX_UNIVERSE_SIZE-1
-    return (index >= 1 && index < DMX_UNIVERSE_SIZE);
+    // index 0 is start code, valid channel indexes are 1..DMX_UNIVERSE_SIZE
+    return (index >= 1 && index <= DMX_UNIVERSE_SIZE);
 }
 
 // Initialize DMX manager
@@ -68,11 +80,41 @@ esp_err_t dmx_manager_init(int tx_pin, int rx_pin, int en_pin)
         return ESP_ERR_NO_MEM;
     }
 
-    // Initialize DMX driver with simple configuration like working code
+    // Select DMX UART/port from sdkconfig
+    dmx_port_t configured_port = (dmx_port_t)CONFIG_DMX_UART_NUM;
+    if (configured_port >= DMX_NUM_MAX)
+    {
+        ESP_LOGE(TAG, "Invalid CONFIG_DMX_UART_NUM=%d (max port=%d)", CONFIG_DMX_UART_NUM, (int)DMX_NUM_MAX - 1);
+        return ESP_ERR_INVALID_ARG;
+    }
+    dmx_port = configured_port;
+
+    ESP_LOGI(TAG, "DMX init: port=%u tx=%d rx=%d en(rts)=%d baud=%d", (unsigned)dmx_port, tx_pin, rx_pin, en_pin, CONFIG_DMX_BAUDRATE);
+
+    // Initialize DMX driver with default configuration
     dmx_config_t config = DMX_CONFIG_DEFAULT;
 
-    dmx_driver_install(dmx_port, &config, NULL, 0);
-    dmx_set_pin(dmx_port, tx_pin, rx_pin, en_pin);
+    if (!dmx_driver_install(dmx_port, &config, NULL, 0))
+    {
+        ESP_LOGE(TAG, "dmx_driver_install failed for port %u", (unsigned)dmx_port);
+        return ESP_FAIL;
+    }
+
+    if (!dmx_set_pin(dmx_port, tx_pin, rx_pin, en_pin))
+    {
+        ESP_LOGE(TAG, "dmx_set_pin failed for port %u (tx=%d rx=%d rts=%d)", (unsigned)dmx_port, tx_pin, rx_pin, en_pin);
+        return ESP_FAIL;
+    }
+
+    uint32_t actual_baud = dmx_set_baud_rate(dmx_port, CONFIG_DMX_BAUDRATE);
+    if (actual_baud == 0)
+    {
+        ESP_LOGW(TAG, "dmx_set_baud_rate failed (requested=%d)", CONFIG_DMX_BAUDRATE);
+    }
+    else if (actual_baud != (uint32_t)CONFIG_DMX_BAUDRATE)
+    {
+        ESP_LOGW(TAG, "DMX baud clamped: requested=%d actual=%u", CONFIG_DMX_BAUDRATE, (unsigned)actual_baud);
+    }
 
     // MAX1348 specific setup
     // Configure Enable pin for MAX1348 transceiver
@@ -82,7 +124,11 @@ esp_err_t dmx_manager_init(int tx_pin, int rx_pin, int en_pin)
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE};
-    gpio_config(&en_pin_config);
+    esp_err_t gpio_err = gpio_config(&en_pin_config);
+    if (gpio_err != ESP_OK)
+    {
+        ESP_LOGW(TAG, "gpio_config(en_pin=%d) failed: %s", en_pin, esp_err_to_name(gpio_err));
+    }
 
     // Set MAX1348 to transmit mode (EN pin HIGH for TX mode)
     gpio_set_level(en_pin, 1);
@@ -93,7 +139,12 @@ esp_err_t dmx_manager_init(int tx_pin, int rx_pin, int en_pin)
     // Initialize data exactly like working code
     memset(dmx_data, 0, sizeof(dmx_data));
     memset(fade_states, 0, sizeof(fade_states));
-    dmx_write(dmx_port, dmx_data, DMX_UNIVERSE_SIZE);
+    dmx_data[0] = DMX_SC; // start code
+    size_t written = dmx_write(dmx_port, dmx_data, DMX_UNIVERSE_SIZE + 1);
+    if (written != (size_t)(DMX_UNIVERSE_SIZE + 1))
+    {
+        ESP_LOGW(TAG, "dmx_write init wrote %u bytes (expected %u)", (unsigned)written, (unsigned)(DMX_UNIVERSE_SIZE + 1));
+    }
 
     // Create fade task
     BaseType_t task_result = xTaskCreate(
@@ -177,7 +228,7 @@ dmx_command_result_t dmx_set_channel(int channel, uint8_t value, int fade_ms)
         if (xSemaphoreTake(dmx_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
         {
             dmx_data[array_index] = value;
-            dmx_write(dmx_port, dmx_data, DMX_UNIVERSE_SIZE);
+            dmx_write(dmx_port, dmx_data, DMX_UNIVERSE_SIZE + 1);
             // Remove dmx_send() - only send in main loop like original
             xSemaphoreGive(dmx_mutex);
             return DMX_CMD_SUCCESS;
@@ -234,7 +285,7 @@ dmx_command_result_t dmx_set_multi_channels(int start_channel, const uint8_t *va
                 fade_states[array_start + i].active = false;
                 dmx_data[array_start + i] = values[i];
             }
-            dmx_write(dmx_port, dmx_data, DMX_UNIVERSE_SIZE);
+            dmx_write(dmx_port, dmx_data, DMX_UNIVERSE_SIZE + 1);
             // Remove dmx_send() - only send in main loop like original
             xSemaphoreGive(dmx_mutex);
             return DMX_CMD_SUCCESS;
@@ -384,7 +435,7 @@ void dmx_stop_all_fades(void)
 
     if (xSemaphoreTake(dmx_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
     {
-        for (int i = 0; i < DMX_UNIVERSE_SIZE; i++)
+        for (int i = 1; i <= DMX_UNIVERSE_SIZE; i++)
         {
             fade_states[i].active = false;
         }
@@ -449,7 +500,7 @@ static void fade_task(void *arg)
 
         if (xSemaphoreTake(dmx_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
         {
-            for (int i = 0; i < DMX_UNIVERSE_SIZE; ++i)
+            for (int i = 1; i <= DMX_UNIVERSE_SIZE; ++i)
             {
                 if (!fade_states[i].active)
                 {
@@ -493,7 +544,7 @@ static void fade_task(void *arg)
             // Send DMX data if updated (write only when changed)
             if (updated)
             {
-                dmx_write(dmx_port, dmx_data, DMX_UNIVERSE_SIZE);
+                dmx_write(dmx_port, dmx_data, DMX_UNIVERSE_SIZE + 1);
             }
 
             xSemaphoreGive(dmx_mutex);

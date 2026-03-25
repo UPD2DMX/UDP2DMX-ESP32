@@ -7,6 +7,7 @@
 #include "nvs_flash.h"
 #include "esp_netif.h"
 #include "esp_dmx.h"
+#include "sdkconfig.h"
 
 // System modules
 #include "system_config.h"
@@ -262,7 +263,7 @@ static esp_err_t start_main_loop(void)
     
     while (1) {
         // Continuous DMX sending - exact timing from working code
-        dmx_send(DMX_NUM_1);
+        dmx_send((dmx_port_t)CONFIG_DMX_UART_NUM);
         
         // Use exact 30ms timing from working version
         vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(30));
