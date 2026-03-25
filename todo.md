@@ -18,7 +18,7 @@ Webserver (manuelle Änderung der Rest API endpunkte)
 
 Muss getestet werden: 
 - []Ethernet
-- []RS485 - 1 für DMX
+- [x]RS485 - 1 für DMX
 
 
 - github seite auf Webpage

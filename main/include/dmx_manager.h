@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include "freertos/FreeRTOS.h"
@@ -24,9 +25,10 @@ typedef enum {
 } dmx_command_result_t;
 
 // DMX Manager functions
-esp_err_t dmx_manager_init(int tx_pin, int rx_pin, int en_pin);
+esp_err_t dmx_manager_init(int uart_num, int tx_pin, int rx_pin, int en_pin);
 void dmx_manager_deinit(void);
 bool dmx_manager_is_initialized(void);
+size_t dmx_manager_send(void);
 
 // Channel operations
 dmx_command_result_t dmx_set_channel(int channel, uint8_t value, int fade_ms);

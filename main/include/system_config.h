@@ -9,13 +9,20 @@
 extern "C" {
 #endif
 
+typedef struct {
+    int uart_num;
+    int tx_pin;
+    int rx_pin;
+    int en_pin;
+} rs485_port_config_t;
+
 // System configuration
 typedef struct {
     // Hardware pins
     struct {
-        int dmx_tx_pin;
-        int dmx_rx_pin;
-        int dmx_en_pin;
+        rs485_port_config_t rs485_out1;
+        rs485_port_config_t rs485_out2;
+        int dmx_output_select;  // 1 = rs485_out1, 2 = rs485_out2
         int debug_led_gpio;
     } hardware;
     
@@ -55,6 +62,9 @@ const system_config_t* system_config_get(void);
 esp_err_t system_config_load_from_nvs(void);
 esp_err_t system_config_save_to_nvs(void);
 esp_err_t system_config_load_defaults(void);
+esp_err_t system_config_set_dmx_output_select(int output_select);
+int system_config_get_dmx_output_select(void);
+const rs485_port_config_t* system_config_get_active_dmx_port(void);
 
 // Configuration validation
 bool system_config_validate(const system_config_t* config);

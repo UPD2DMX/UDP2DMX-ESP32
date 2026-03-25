@@ -11,9 +11,19 @@ static const char *NVS_NAMESPACE = "system_cfg";
 // Default configuration - loaded from Menuconfig (sdkconfig.h)
 static system_config_t default_config = {
     .hardware = {
-        .dmx_tx_pin = CONFIG_DMX_TX_GPIO,
-        .dmx_rx_pin = CONFIG_DMX_RX_GPIO,
-        .dmx_en_pin = CONFIG_DMX_RTS_GPIO,
+        .rs485_out1 = {
+            .uart_num = CONFIG_DMX_UART_NUM,
+            .tx_pin = CONFIG_DMX_TX_GPIO,
+            .rx_pin = CONFIG_DMX_RX_GPIO,
+            .en_pin = CONFIG_DMX_RTS_GPIO,
+        },
+        .rs485_out2 = {
+            .uart_num = CONFIG_RS485_2_UART_NUM,
+            .tx_pin = CONFIG_RS485_2_TX_GPIO,
+            .rx_pin = CONFIG_RS485_2_RX_GPIO,
+            .en_pin = CONFIG_RS485_2_RTS_GPIO,
+        },
+        .dmx_output_select = CONFIG_DMX_ACTIVE_OUTPUT,
         .debug_led_gpio = CONFIG_DEBUG_LED_GPIO},
 #ifdef CONFIG_ENABLE_ETHERNET
     .ethernet = {
@@ -162,10 +172,48 @@ bool system_config_validate(const system_config_t *config)
         return false;
     }
 
-    // Validate hardware pins
-    if (config->hardware.dmx_tx_pin < 0 || config->hardware.dmx_tx_pin > 39 ||
-        config->hardware.dmx_rx_pin < 0 || config->hardware.dmx_rx_pin > 39 ||
-        config->hardware.dmx_en_pin < 0 || config->hardware.dmx_en_pin > 39 ||
+    // Validate RS485 output 1
+    if (config->hardware.rs485_out1.uart_num < 0 || config->hardware.rs485_out1.uart_num > 2 ||
+        config->hardware.rs485_out1.tx_pin < 0 || config->hardware.rs485_out1.tx_pin > 39 ||
+        config->hardware.rs485_out1.rx_pin < 0 || config->hardware.rs485_out1.rx_pin > 39 ||
+        config->hardware.rs485_out1.en_pin < 0 || config->hardware.rs485_out1.en_pin > 39)
+    {
+        ESP_LOGW(TAG, "Invalid RS485 output 1 configuration");
+        return false;
+    }
+
+    // Validate RS485 output 2
+    if (config->hardware.rs485_out2.uart_num < 0 || config->hardware.rs485_out2.uart_num > 2 ||
+        config->hardware.rs485_out2.tx_pin < 0 || config->hardware.rs485_out2.tx_pin > 39 ||
+        config->hardware.rs485_out2.rx_pin < 0 || config->hardware.rs485_out2.rx_pin > 39 ||
+        config->hardware.rs485_out2.en_pin < 0 || config->hardware.rs485_out2.en_pin > 39)
+    {
+        ESP_LOGW(TAG, "Invalid RS485 output 2 configuration");
+        return false;
+    }
+
+    if (config->hardware.dmx_output_select < 1 || config->hardware.dmx_output_select > 2)
+    {
+        ESP_LOGW(TAG, "Invalid DMX output selection: %d", config->hardware.dmx_output_select);
+        return false;
+    }
+
+    if (config->hardware.rs485_out1.uart_num == config->hardware.rs485_out2.uart_num)
+    {
+        ESP_LOGW(TAG, "RS485 outputs must use different UARTs (both are %d)", config->hardware.rs485_out1.uart_num);
+        return false;
+    }
+
+    if (config->hardware.rs485_out1.tx_pin == config->hardware.rs485_out2.tx_pin ||
+        config->hardware.rs485_out1.rx_pin == config->hardware.rs485_out2.rx_pin ||
+        config->hardware.rs485_out1.en_pin == config->hardware.rs485_out2.en_pin)
+    {
+        ESP_LOGW(TAG, "RS485 outputs share at least one identical pin; this is not supported");
+        return false;
+    }
+
+    // Validate other hardware pins
+    if (
         config->hardware.debug_led_gpio < 0 || config->hardware.debug_led_gpio > 39)
     {
         ESP_LOGW(TAG, "Invalid GPIO pin configuration");
@@ -234,9 +282,17 @@ void system_config_print(const system_config_t *config)
 
     ESP_LOGI(TAG, "=== System Configuration ===");
     ESP_LOGI(TAG, "Hardware:");
-    ESP_LOGI(TAG, "  DMX TX Pin: %d", config->hardware.dmx_tx_pin);
-    ESP_LOGI(TAG, "  DMX RX Pin: %d", config->hardware.dmx_rx_pin);
-    ESP_LOGI(TAG, "  DMX EN Pin: %d", config->hardware.dmx_en_pin);
+    ESP_LOGI(TAG, "  RS485 Out1: UART=%d TX=%d RX=%d EN=%d",
+             config->hardware.rs485_out1.uart_num,
+             config->hardware.rs485_out1.tx_pin,
+             config->hardware.rs485_out1.rx_pin,
+             config->hardware.rs485_out1.en_pin);
+    ESP_LOGI(TAG, "  RS485 Out2: UART=%d TX=%d RX=%d EN=%d",
+             config->hardware.rs485_out2.uart_num,
+             config->hardware.rs485_out2.tx_pin,
+             config->hardware.rs485_out2.rx_pin,
+             config->hardware.rs485_out2.en_pin);
+    ESP_LOGI(TAG, "  Active DMX Output: RS485-%d", config->hardware.dmx_output_select);
     ESP_LOGI(TAG, "  Debug LED GPIO: %d", config->hardware.debug_led_gpio);
 
     if (config->ethernet.enable)
@@ -267,4 +323,45 @@ void system_config_print(const system_config_t *config)
     ESP_LOGI(TAG, "  Debug Logging: %s", config->system.enable_debug_logging ? "Yes" : "No");
     ESP_LOGI(TAG, "  Watchdog Timeout: %d ms", config->system.watchdog_timeout_ms);
     ESP_LOGI(TAG, "=== End Configuration ===");
+}
+
+esp_err_t system_config_set_dmx_output_select(int output_select)
+{
+    if (!config_initialized)
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (output_select < 1 || output_select > 2)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    current_config.hardware.dmx_output_select = output_select;
+
+    if (!system_config_validate(&current_config))
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    return system_config_save_to_nvs();
+}
+
+int system_config_get_dmx_output_select(void)
+{
+    if (!config_initialized)
+    {
+        return default_config.hardware.dmx_output_select;
+    }
+    return current_config.hardware.dmx_output_select;
+}
+
+const rs485_port_config_t *system_config_get_active_dmx_port(void)
+{
+    const system_config_t *config = system_config_get();
+    if (config->hardware.dmx_output_select == 2)
+    {
+        return &config->hardware.rs485_out2;
+    }
+    return &config->hardware.rs485_out1;
 }

@@ -256,6 +256,10 @@
                 <span class="status-label">IP Address:</span>
                 <span class="status-value" id="ipValue">-</span>
             </div>
+            <div class="status-item">
+                <span class="status-label">DMX Output:</span>
+                <span class="status-value" id="dmxOutputValue">-</span>
+            </div>
         </div>
 
         <form id="wifiForm">
@@ -303,6 +307,27 @@
 
         <div class="divider"></div>
 
+        <h3 style="margin-bottom: 15px;">RS485 / DMX Output</h3>
+        <div class="form-group">
+            <label for="dmxOutputSelect">Aktiver Ausgang fuer DMX</label>
+            <select id="dmxOutputSelect" name="dmxOutputSelect">
+                <option value="1">RS485 Output 1</option>
+                <option value="2">RS485 Output 2</option>
+            </select>
+        </div>
+
+        <div class="ip-section active" style="display:block;">
+            <h3>Port-Zuordnung aus sdkconfig</h3>
+            <div class="status-item"><span class="status-label">RS485-1:</span><span class="status-value"
+                    id="rs485Out1Info">-</span></div>
+            <div class="status-item"><span class="status-label">RS485-2:</span><span class="status-value"
+                    id="rs485Out2Info">-</span></div>
+        </div>
+
+        <button type="button" id="saveHardwareBtn">🔌 Save DMX Output & Reboot</button>
+
+        <div class="divider"></div>
+
         <button type="button" class="button-secondary" id="rebootBtn">⚡ Reboot ESP32</button>
 
         <div class="divider"></div>
@@ -326,10 +351,14 @@
         const staticIpSection = document.getElementById('staticIpSection');
         const saveBtn = document.getElementById('saveBtn');
         const rebootBtn = document.getElementById('rebootBtn');
+        const saveHardwareBtn = document.getElementById('saveHardwareBtn');
         const downloadBtn = document.getElementById('downloadBtn');
         const uploadBtn = document.getElementById('uploadBtn');
         const fileInput = document.getElementById('fileInput');
         const alert = document.getElementById('alert');
+        const dmxOutputSelect = document.getElementById('dmxOutputSelect');
+        const rs485Out1Info = document.getElementById('rs485Out1Info');
+        const rs485Out2Info = document.getElementById('rs485Out2Info');
 
         // ==================== Event Listeners ====================
 
@@ -345,6 +374,12 @@
         rebootBtn.addEventListener('click', async function () {
             if (confirm('Really reboot ESP32?')) {
                 await rebootDevice();
+            }
+        });
+
+        saveHardwareBtn.addEventListener('click', async function () {
+            if (confirm('DMX-Ausgang wechseln und ESP neu starten?')) {
+                await saveHardwareConfig();
             }
         });
 
@@ -380,7 +415,10 @@
             } else {
                 btn.disabled = false;
                 btn.innerHTML = btn === saveBtn ? '💾 Save & Reboot' :
-                    btn === rebootBtn ? '⚡ Reboot ESP32' : '🔄 Refresh Status';
+                    btn === rebootBtn ? '⚡ Reboot ESP32' :
+                        btn === saveHardwareBtn ? '🔌 Save DMX Output & Reboot' :
+                            btn === uploadBtn ? '⬆️ Upload Config' :
+                                btn === downloadBtn ? '⬇️ Download Config' : 'Button';
             }
         }
 
@@ -430,9 +468,64 @@
 
                 document.getElementById('statusValue').textContent = statusText;
                 document.getElementById('ipValue').textContent = data.ip_address;
+                document.getElementById('dmxOutputValue').textContent = `RS485-${data.dmx_output_select || '-'}`;
             } catch (error) {
                 console.error('Error loading status:', error);
                 document.getElementById('statusValue').textContent = 'Error loading';
+            }
+        }
+
+        function formatPortInfo(port) {
+            if (!port) return '-';
+            return `UART${port.uart}, TX=${port.tx}, RX=${port.rx}, EN=${port.en}`;
+        }
+
+        async function loadHardwareConfig() {
+            try {
+                const response = await fetch(`${API_BASE}/api/hardware`);
+                if (!response.ok) throw new Error('Failed to load hardware config');
+
+                const data = await response.json();
+                dmxOutputSelect.value = String(data.dmx_output_select || 1);
+                rs485Out1Info.textContent = formatPortInfo(data.rs485_out1);
+                rs485Out2Info.textContent = formatPortInfo(data.rs485_out2);
+                document.getElementById('dmxOutputValue').textContent = `RS485-${data.dmx_output_select || '-'}`;
+            } catch (error) {
+                console.error('Error loading hardware config:', error);
+                showAlert('Error loading hardware configuration', 'error');
+            }
+        }
+
+        async function saveHardwareConfig() {
+            const payload = {
+                dmx_output_select: parseInt(dmxOutputSelect.value, 10)
+            };
+
+            setButtonLoading(saveHardwareBtn, true);
+
+            try {
+                const response = await fetch(`${API_BASE}/api/hardware`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(error);
+                }
+
+                showAlert('✅ DMX output saved! ESP is rebooting...', 'success');
+
+                setTimeout(() => {
+                    location.reload();
+                }, 2500);
+            } catch (error) {
+                console.error('Error saving hardware config:', error);
+                showAlert(`Error: ${error.message}`, 'error');
+                setButtonLoading(saveHardwareBtn, false);
             }
         }
 
@@ -595,6 +688,7 @@
         document.addEventListener('DOMContentLoaded', function () {
             loadWifiConfig();
             loadSystemStatus();
+            loadHardwareConfig();
         });
     </script>
 </body>

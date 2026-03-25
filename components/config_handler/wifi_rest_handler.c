@@ -11,6 +11,7 @@
 #include "my_wifi.h"
 #include "my_led.h"
 #include "my_ethernet.h"
+#include "../../main/include/system_config.h"
 
 static const char *TAG = "wifi_rest";
 
@@ -327,6 +328,7 @@ esp_err_t system_info_handler(httpd_req_t *req)
     cJSON_AddStringToObject(root, "mac_address", mac_str);
     cJSON_AddNumberToObject(root, "free_heap", esp_get_free_heap_size());
     cJSON_AddNumberToObject(root, "dmx_channels", 512);
+    cJSON_AddNumberToObject(root, "dmx_output_select", system_config_get_dmx_output_select());
 
     char *json_str = cJSON_Print(root);
     httpd_resp_set_type(req, "application/json");
@@ -334,6 +336,121 @@ esp_err_t system_info_handler(httpd_req_t *req)
 
     free(json_str);
     cJSON_Delete(root);
+    return ESP_OK;
+}
+
+/**
+ * @brief GET /api/hardware - Returns RS485 hardware mapping and active DMX output
+ */
+esp_err_t hardware_get_config_handler(httpd_req_t *req)
+{
+    const system_config_t *config = system_config_get();
+    const rs485_port_config_t *active = system_config_get_active_dmx_port();
+
+    cJSON *root = cJSON_CreateObject();
+    if (!root)
+    {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+
+    cJSON *out1 = cJSON_CreateObject();
+    cJSON_AddNumberToObject(out1, "uart", config->hardware.rs485_out1.uart_num);
+    cJSON_AddNumberToObject(out1, "tx", config->hardware.rs485_out1.tx_pin);
+    cJSON_AddNumberToObject(out1, "rx", config->hardware.rs485_out1.rx_pin);
+    cJSON_AddNumberToObject(out1, "en", config->hardware.rs485_out1.en_pin);
+
+    cJSON *out2 = cJSON_CreateObject();
+    cJSON_AddNumberToObject(out2, "uart", config->hardware.rs485_out2.uart_num);
+    cJSON_AddNumberToObject(out2, "tx", config->hardware.rs485_out2.tx_pin);
+    cJSON_AddNumberToObject(out2, "rx", config->hardware.rs485_out2.rx_pin);
+    cJSON_AddNumberToObject(out2, "en", config->hardware.rs485_out2.en_pin);
+
+    cJSON_AddItemToObject(root, "rs485_out1", out1);
+    cJSON_AddItemToObject(root, "rs485_out2", out2);
+    cJSON_AddNumberToObject(root, "dmx_output_select", config->hardware.dmx_output_select);
+
+    if (active)
+    {
+        cJSON *active_obj = cJSON_CreateObject();
+        cJSON_AddNumberToObject(active_obj, "uart", active->uart_num);
+        cJSON_AddNumberToObject(active_obj, "tx", active->tx_pin);
+        cJSON_AddNumberToObject(active_obj, "rx", active->rx_pin);
+        cJSON_AddNumberToObject(active_obj, "en", active->en_pin);
+        cJSON_AddItemToObject(root, "active_dmx_port", active_obj);
+    }
+
+    char *json_str = cJSON_Print(root);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, (const char *)json_str, HTTPD_RESP_USE_STRLEN);
+
+    free(json_str);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+/**
+ * @brief POST /api/hardware - Update active DMX output (1 or 2)
+ */
+esp_err_t hardware_post_config_handler(httpd_req_t *req)
+{
+    char buffer[256];
+    int total_len = req->content_len;
+
+    if (total_len <= 0 || total_len >= sizeof(buffer))
+    {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid content length");
+        return ESP_FAIL;
+    }
+
+    int ret = httpd_req_recv(req, buffer, total_len);
+    if (ret <= 0)
+    {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+    buffer[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buffer);
+    if (!root)
+    {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    cJSON *dmx_out = cJSON_GetObjectItem(root, "dmx_output_select");
+    if (!cJSON_IsNumber(dmx_out))
+    {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "dmx_output_select must be a number (1 or 2)");
+        return ESP_FAIL;
+    }
+
+    int output_select = dmx_out->valueint;
+    cJSON_Delete(root);
+
+    esp_err_t err = system_config_set_dmx_output_select(output_select);
+    if (err != ESP_OK)
+    {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to apply hardware configuration");
+        return ESP_FAIL;
+    }
+
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddBoolToObject(response, "success", true);
+    cJSON_AddStringToObject(response, "message", "Hardware configuration saved. Restarting...");
+    cJSON_AddNumberToObject(response, "dmx_output_select", output_select);
+
+    char *json_str = cJSON_Print(response);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, (const char *)json_str, HTTPD_RESP_USE_STRLEN);
+    free(json_str);
+    cJSON_Delete(response);
+
+    ESP_LOGI(TAG, "Updated active DMX output to RS485-%d", output_select);
+
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    esp_restart();
     return ESP_OK;
 }
 
@@ -401,6 +518,24 @@ void wifi_rest_register_handlers(httpd_handle_t server)
         .user_ctx = NULL
     };
     httpd_register_uri_handler(server, &reboot_uri);
+
+    // GET /api/hardware
+    httpd_uri_t get_hardware_uri = {
+        .uri = "/api/hardware",
+        .method = HTTP_GET,
+        .handler = hardware_get_config_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &get_hardware_uri);
+
+    // POST /api/hardware
+    httpd_uri_t post_hardware_uri = {
+        .uri = "/api/hardware",
+        .method = HTTP_POST,
+        .handler = hardware_post_config_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &post_hardware_uri);
 
     ESP_LOGI(TAG, "WiFi REST API handlers registered");
 }

@@ -126,28 +126,62 @@ endmenu
 menu "Hardware Configuration"
 
 config DMX_TX_GPIO
-    int "DMX TX GPIO Pin"
+    int "RS485 Output 1 TX GPIO Pin"
     default 17
     help
-        GPIO Pin für DMX TX (RS485 DI Pin)
+        GPIO Pin fuer RS485 Output 1 TX (DI)
 
 config DMX_RX_GPIO
-    int "DMX RX GPIO Pin"
+    int "RS485 Output 1 RX GPIO Pin"
     default 16
     help
-        GPIO Pin für DMX RX (RS485 RO Pin)
+        GPIO Pin fuer RS485 Output 1 RX (RO)
 
 config DMX_RTS_GPIO
-    int "DMX RTS GPIO Pin (RS485 DE)"
+    int "RS485 Output 1 RTS GPIO Pin (DE)"
     default 18
     help
-        GPIO Pin für DMX RTS / RS485 Driver Enable
+        GPIO Pin fuer RS485 Output 1 DE/RTS
 
 config DMX_UART_NUM
-    int "DMX UART Number"
+    int "RS485 Output 1 UART Number"
     default 2
+    range 0 2
     help
-        UART Nummer für DMX (0, 1 oder 2)
+        UART Nummer fuer RS485 Output 1 (0, 1 oder 2)
+
+config RS485_2_TX_GPIO
+    int "RS485 Output 2 TX GPIO Pin"
+    default 25
+    help
+        GPIO Pin fuer RS485 Output 2 TX (DI)
+
+config RS485_2_RX_GPIO
+    int "RS485 Output 2 RX GPIO Pin"
+    default 26
+    help
+        GPIO Pin fuer RS485 Output 2 RX (RO)
+
+config RS485_2_RTS_GPIO
+    int "RS485 Output 2 RTS GPIO Pin (DE)"
+    default 27
+    help
+        GPIO Pin fuer RS485 Output 2 DE/RTS
+
+config RS485_2_UART_NUM
+    int "RS485 Output 2 UART Number"
+    default 1
+    range 0 2
+    help
+        UART Nummer fuer RS485 Output 2 (0, 1 oder 2)
+
+config DMX_ACTIVE_OUTPUT
+    int "Aktiver RS485 Ausgang fuer DMX (1 oder 2)"
+    default 1
+    range 1 2
+    help
+        Waehlt, welcher RS485 Ausgang fuer DMX verwendet wird.
+        Diese Voreinstellung kann spaeter im Webinterface geaendert werden.
 
 config DMX_BAUDRATE
     int "DMX Baudrate"

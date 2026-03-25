@@ -6,8 +6,6 @@
 #include "esp_event.h"
 #include "nvs_flash.h"
 #include "esp_netif.h"
-#include "esp_dmx.h"
-#include "sdkconfig.h"
 
 // System modules
 #include "system_config.h"
@@ -202,13 +200,26 @@ static esp_err_t init_dmx_system(void)
     vTaskDelay(pdMS_TO_TICKS(2000));
     ESP_LOGI(TAG, "System settled, proceeding with DMX initialization");
     
-    const system_config_t *config = system_config_get();
+    const rs485_port_config_t *active_port = system_config_get_active_dmx_port();
+    if (!active_port)
+    {
+        ESP_LOGE(TAG, "No active RS485 output available for DMX");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Using RS485-%d for DMX (UART=%d TX=%d RX=%d EN=%d)",
+             system_config_get_dmx_output_select(),
+             active_port->uart_num,
+             active_port->tx_pin,
+             active_port->rx_pin,
+             active_port->en_pin);
 
     // Initialize DMX manager
     esp_err_t err = dmx_manager_init(
-        config->hardware.dmx_tx_pin,
-        config->hardware.dmx_rx_pin,
-        config->hardware.dmx_en_pin
+        active_port->uart_num,
+        active_port->tx_pin,
+        active_port->rx_pin,
+        active_port->en_pin
     );
     
     if (err != ESP_OK) {
@@ -263,7 +274,7 @@ static esp_err_t start_main_loop(void)
     
     while (1) {
         // Continuous DMX sending - exact timing from working code
-        dmx_send((dmx_port_t)CONFIG_DMX_UART_NUM);
+        dmx_manager_send();
         
         // Use exact 30ms timing from working version
         vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(30));

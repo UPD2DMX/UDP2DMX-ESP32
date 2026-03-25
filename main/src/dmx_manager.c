@@ -64,7 +64,7 @@ static bool is_array_index_valid(int index)
 }
 
 // Initialize DMX manager
-esp_err_t dmx_manager_init(int tx_pin, int rx_pin, int en_pin)
+esp_err_t dmx_manager_init(int uart_num, int tx_pin, int rx_pin, int en_pin)
 {
     if (dmx_initialized)
     {
@@ -81,10 +81,10 @@ esp_err_t dmx_manager_init(int tx_pin, int rx_pin, int en_pin)
     }
 
     // Select DMX UART/port from sdkconfig
-    dmx_port_t configured_port = (dmx_port_t)CONFIG_DMX_UART_NUM;
+    dmx_port_t configured_port = (dmx_port_t)uart_num;
     if (configured_port >= DMX_NUM_MAX)
     {
-        ESP_LOGE(TAG, "Invalid CONFIG_DMX_UART_NUM=%d (max port=%d)", CONFIG_DMX_UART_NUM, (int)DMX_NUM_MAX - 1);
+        ESP_LOGE(TAG, "Invalid UART/DMX port=%d (max port=%d)", uart_num, (int)DMX_NUM_MAX - 1);
         return ESP_ERR_INVALID_ARG;
     }
     dmx_port = configured_port;
@@ -198,6 +198,15 @@ void dmx_manager_deinit(void)
 bool dmx_manager_is_initialized(void)
 {
     return dmx_initialized;
+}
+
+size_t dmx_manager_send(void)
+{
+    if (!dmx_initialized)
+    {
+        return 0;
+    }
+    return dmx_send(dmx_port);
 }
 
 // Set single channel
