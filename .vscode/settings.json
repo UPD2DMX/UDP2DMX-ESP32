@@ -1,10 +1,11 @@
 {
-    "idf.portWin": "COM8",
+    "idf.portWin": "COM9",
     "files.associations": {
         "esp_dmx.h": "c"
     },
     "idf.espIdfPathWin": "d:\\git\\esp-idf",
     "idf.toolsPathWin": "c:\\Espressif\\tools",
     "idf.pythonInstallPath": "c:\\Espressif\\tools\\tools\\idf-python\\3.11.2\\python.exe",
-    "idf.flashType": "UART"
+    "idf.flashType": "UART",
+    "idf.currentSetup": "c:\\git\\esp-idf"
 }

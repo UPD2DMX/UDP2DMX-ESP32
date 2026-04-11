@@ -26,6 +26,7 @@ static udp_server_stats_t server_stats = {0};
 static void udp_server_task(void *arg);
 static esp_err_t handle_dmx_universe_data(const uint8_t *data, size_t len);
 static esp_err_t handle_dmx_command(const char *cmd);
+static bool dmx_universe_matches(const uint8_t *data);
 
 // Initialize UDP server
 esp_err_t udp_server_init(uint16_t port)
@@ -245,6 +246,11 @@ static esp_err_t handle_dmx_universe_data(const uint8_t *data, size_t len)
         return ESP_ERR_INVALID_ARG;
     }
 
+    if (dmx_universe_matches(data)) {
+        ESP_LOGD(TAG, "DMX universe unchanged; skipping update");
+        return ESP_OK;
+    }
+
     // Stop all current fades and update all channels
     dmx_stop_all_fades();
     
@@ -257,6 +263,21 @@ static esp_err_t handle_dmx_universe_data(const uint8_t *data, size_t len)
         ESP_LOGW(TAG, "Failed to update DMX universe: %d", result);
         return ESP_FAIL;
     }
+}
+
+static bool dmx_universe_matches(const uint8_t *data)
+{
+    if (!data) {
+        return false;
+    }
+
+    for (int channel = 1; channel <= DMX_UNIVERSE_SIZE; ++channel) {
+        if (dmx_get_channel_value(channel) != data[channel - 1]) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 // Handle DMX command

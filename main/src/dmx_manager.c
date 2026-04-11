@@ -217,6 +217,23 @@ dmx_command_result_t dmx_set_channel(int channel, uint8_t value, int fade_ms)
 
     int array_index = channel; // Use channel directly like original (bug compatibility)
 
+    if (xSemaphoreTake(dmx_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
+    {
+        bool fade_active = fade_states[array_index].active;
+        uint8_t fade_target = fade_states[array_index].target_value;
+        uint8_t current_value = dmx_data[array_index];
+        xSemaphoreGive(dmx_mutex);
+
+        if ((fade_active && fade_target == value) || (!fade_active && current_value == value))
+        {
+            return DMX_CMD_SUCCESS;
+        }
+    }
+    else
+    {
+        ESP_LOGW(TAG, "Failed to acquire mutex while checking current channel state");
+    }
+
     if (fade_ms > 0)
     {
         return start_fade(array_index, value, fade_ms);
@@ -268,7 +285,29 @@ dmx_command_result_t dmx_set_multi_channels(int start_channel, const uint8_t *va
     {
         for (int i = 0; i < count; ++i)
         {
-            dmx_command_result_t result = start_fade(array_start + i, values[i], fade_ms);
+            int channel_index = array_start + i;
+
+            bool skip_fade = false;
+            if (xSemaphoreTake(dmx_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
+            {
+                bool fade_active = fade_states[channel_index].active;
+                uint8_t fade_target = fade_states[channel_index].target_value;
+                uint8_t current_value = dmx_data[channel_index];
+                xSemaphoreGive(dmx_mutex);
+
+                skip_fade = ((fade_active && fade_target == values[i]) || (!fade_active && current_value == values[i]));
+            }
+            else
+            {
+                ESP_LOGW(TAG, "Failed to acquire mutex while checking current multi-channel state");
+            }
+
+            if (skip_fade)
+            {
+                continue;
+            }
+
+            dmx_command_result_t result = start_fade(channel_index, values[i], fade_ms);
             if (result != DMX_CMD_SUCCESS)
             {
                 return result;

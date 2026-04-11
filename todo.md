@@ -18,7 +18,7 @@ Webserver (manuelle Änderung der Rest API endpunkte)
 
 Muss getestet werden: 
 - []Ethernet
-- []RS485 - 1 für DMX
+- [x]RS485 - 1 für DMX
 
 
 - github seite auf Webpage
@@ -29,7 +29,7 @@ Muss getestet werden:
 # Platine
 - Benötigt die Platine eine Power LED die Dauerhaft an ist? 
   - Eventuell nur einschalten wenn Knopf gedrückt? 
-  - Ansonsten dunklerer LED auch in Ordnung. 
+  - Ansonsten dunklere LED auch in Ordnung. 
 
 - Ethernet
   - Via USB Spannungsversorgung evtl. nicht ganz ausreichend. USB muss neu Verbunden werden damit eine sichere Netzwerkverbindung hergestellt werden kann.
