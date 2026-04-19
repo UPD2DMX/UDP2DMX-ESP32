@@ -145,8 +145,12 @@ dmx_command_result_t udp_execute_command(const udp_parsed_command_t *cmd)
 
         if (result == DMX_CMD_SUCCESS)
         {
-            ESP_LOGI(TAG, "RGB %d: R=%d G=%d B=%d with fade %d ms",
-                     cmd->channel, r, g, b, fade_ms);
+            ESP_LOGI(TAG, "DMX RGB CH%d-%d: R=%u@CH%d G=%u@CH%d B=%u@CH%d fade=%dms",
+                     cmd->channel, cmd->channel + 2,
+                     (unsigned)r, cmd->channel,
+                     (unsigned)g, cmd->channel + 1,
+                     (unsigned)b, cmd->channel + 2,
+                     fade_ms);
         }
         break;
     }
@@ -160,8 +164,11 @@ dmx_command_result_t udp_execute_command(const udp_parsed_command_t *cmd)
 
         if (result == DMX_CMD_SUCCESS)
         {
-            ESP_LOGI(TAG, "Tunable White %d: WW=%d CW=%d with fade %d ms",
-                     cmd->channel, ww, cw, fade_ms);
+            ESP_LOGI(TAG, "DMX TW CH%d-%d: WW=%u@CH%d CW=%u@CH%d fade=%dms",
+                     cmd->channel, cmd->channel + 1,
+                     (unsigned)ww, cmd->channel,
+                     (unsigned)cw, cmd->channel + 1,
+                     fade_ms);
         }
         break;
     }
@@ -182,7 +189,24 @@ dmx_command_result_t udp_execute_command(const udp_parsed_command_t *cmd)
         // Clamp brightness to valid range
         brightness = (brightness < 0) ? 0 : (brightness > 100 ? 100 : brightness);
 
-        result = dmx_set_light_ct(cmd->channel, brightness, color_temp, fade_ms);
+        int ch_ww = 0;
+        int ch_cw = 0;
+        uint8_t val_ww = 0;
+        uint8_t val_cw = 0;
+
+        result = dmx_set_light_ct_ex(cmd->channel, brightness, color_temp, fade_ms,
+                                     &ch_ww, &ch_cw, &val_ww, &val_cw);
+
+        if (result == DMX_CMD_SUCCESS)
+        {
+            int start_ch = (ch_ww < ch_cw) ? ch_ww : ch_cw;
+            int end_ch = (ch_ww > ch_cw) ? ch_ww : ch_cw;
+            ESP_LOGI(TAG, "DMX CT CH%d-%d: %d%% %dK -> WW=%u@CH%d CW=%u@CH%d fade=%dms",
+                     start_ch, end_ch, brightness, color_temp,
+                     (unsigned)val_ww, ch_ww,
+                     (unsigned)val_cw, ch_cw,
+                     fade_ms);
+        }
         break;
     }
 
@@ -196,8 +220,8 @@ dmx_command_result_t udp_execute_command(const udp_parsed_command_t *cmd)
 
         if (result == DMX_CMD_SUCCESS)
         {
-            ESP_LOGI(TAG, "Channel %d set to %d%% (%d/255)",
-                     cmd->channel, cmd->value, dmx_value);
+            ESP_LOGI(TAG, "DMX P CH%d: %d%% -> %d/255 fade=%dms",
+                     cmd->channel, cmd->value, dmx_value, fade_ms);
         }
         break;
     }
@@ -211,7 +235,8 @@ dmx_command_result_t udp_execute_command(const udp_parsed_command_t *cmd)
 
         if (result == DMX_CMD_SUCCESS)
         {
-            ESP_LOGI(TAG, "Channel %d set to %d", cmd->channel, dmx_value);
+            ESP_LOGI(TAG, "DMX C CH%d: %u/255 fade=%dms",
+                     cmd->channel, (unsigned)dmx_value, fade_ms);
         }
         break;
     }

@@ -307,6 +307,11 @@
 
         <div class="divider"></div>
 
+        <h3 style="margin-bottom: 15px;">Debug</h3>
+        <button type="button" class="button-secondary" id="dmxStatusBtn">🔎 DMX Status</button>
+
+        <div class="divider"></div>
+
         <h3 style="margin-bottom: 15px;">Configuration</h3>
         <button type="button" class="button-secondary" id="downloadBtn">⬇️ Download Config</button>
         <button type="button" class="button-secondary" id="uploadBtn">⬆️ Upload Config</button>
@@ -326,6 +331,7 @@
         const staticIpSection = document.getElementById('staticIpSection');
         const saveBtn = document.getElementById('saveBtn');
         const rebootBtn = document.getElementById('rebootBtn');
+        const dmxStatusBtn = document.getElementById('dmxStatusBtn');
         const downloadBtn = document.getElementById('downloadBtn');
         const uploadBtn = document.getElementById('uploadBtn');
         const fileInput = document.getElementById('fileInput');
@@ -346,6 +352,10 @@
             if (confirm('Really reboot ESP32?')) {
                 await rebootDevice();
             }
+        });
+
+        dmxStatusBtn.addEventListener('click', function () {
+            window.location.href = `${API_BASE}/dmx/status`;
         });
 
         downloadBtn.addEventListener('click', async function () {

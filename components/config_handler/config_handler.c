@@ -10,6 +10,13 @@
 static const char *TAG = "config_rest";
 static const char *CONFIG_PATH = "/spiffs/config.json";
 
+static httpd_handle_t g_server = NULL;
+
+httpd_handle_t config_handler_get_server(void)
+{
+    return g_server;
+}
+
 void cjson_merge_objects(cJSON *target, const cJSON *patch)
 {
     const cJSON *entry = NULL;
@@ -267,6 +274,7 @@ void start_rest_server(void)
     httpd_handle_t server = NULL;
     if (httpd_start(&server, &config) == ESP_OK)
     {
+        g_server = server;
         // Root handler for index.html
         httpd_uri_t root_uri = {
             .uri = "/",

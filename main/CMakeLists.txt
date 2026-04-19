@@ -1,6 +1,7 @@
 set(COMPONENT_SRCS 
     "src/main.c"
     "src/dmx_manager.c"
+    "src/dmx_status_http.c"
     "src/udp_protocol.c"
     "src/udp_server.c"
     "src/system_config.c"

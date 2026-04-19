@@ -7,6 +7,7 @@
 #include "esp_dmx.h"
 #include "sdkconfig.h"
 #include "driver/gpio.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -19,6 +20,11 @@ static dmx_port_t dmx_port = DMX_NUM_1;
 // esp_dmx expects slot 0 = start code, slots 1..512 = channels
 static uint8_t dmx_data[DMX_UNIVERSE_SIZE + 1] = {0};
 static SemaphoreHandle_t dmx_mutex = NULL;
+
+// Last change tracking (ms since boot).
+// Updated on command application / fade start (not on each fade step).
+static uint32_t last_change_ms[DMX_UNIVERSE_SIZE + 1] = {0};
+static uint32_t last_change_any_ms = 0;
 
 // Fade state management
 typedef struct
@@ -38,6 +44,11 @@ static void fade_task(void *arg);
 static bool is_array_index_valid(int index);
 static dmx_command_result_t start_fade(int channel, uint8_t value, int duration_ms);
 static void stop_fade(int channel);
+
+static inline uint32_t now_ms(void)
+{
+    return (uint32_t)(esp_timer_get_time() / 1000ULL);
+}
 
 // Bounds checking functions
 bool dmx_is_channel_valid(int channel, int count)
@@ -139,6 +150,8 @@ esp_err_t dmx_manager_init(int tx_pin, int rx_pin, int en_pin)
     // Initialize data exactly like working code
     memset(dmx_data, 0, sizeof(dmx_data));
     memset(fade_states, 0, sizeof(fade_states));
+    memset(last_change_ms, 0, sizeof(last_change_ms));
+    last_change_any_ms = 0;
     dmx_data[0] = DMX_SC; // start code
     size_t written = dmx_write(dmx_port, dmx_data, DMX_UNIVERSE_SIZE + 1);
     if (written != (size_t)(DMX_UNIVERSE_SIZE + 1))
@@ -245,6 +258,9 @@ dmx_command_result_t dmx_set_channel(int channel, uint8_t value, int fade_ms)
         if (xSemaphoreTake(dmx_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
         {
             dmx_data[array_index] = value;
+            uint32_t ms = now_ms();
+            last_change_ms[array_index] = ms;
+            last_change_any_ms = ms;
             dmx_write(dmx_port, dmx_data, DMX_UNIVERSE_SIZE + 1);
             // Remove dmx_send() - only send in main loop like original
             xSemaphoreGive(dmx_mutex);
@@ -319,11 +335,14 @@ dmx_command_result_t dmx_set_multi_channels(int start_channel, const uint8_t *va
     {
         if (xSemaphoreTake(dmx_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
         {
+            uint32_t ms = now_ms();
             for (int i = 0; i < count; ++i)
             {
                 fade_states[array_start + i].active = false;
                 dmx_data[array_start + i] = values[i];
+                last_change_ms[array_start + i] = ms;
             }
+            last_change_any_ms = ms;
             dmx_write(dmx_port, dmx_data, DMX_UNIVERSE_SIZE + 1);
             // Remove dmx_send() - only send in main loop like original
             xSemaphoreGive(dmx_mutex);
@@ -353,6 +372,13 @@ dmx_command_result_t dmx_set_tunable_white(int channel, uint8_t warm_white, uint
 
 // Set light with color temperature
 dmx_command_result_t dmx_set_light_ct(int channel, int brightness_percent, int color_temp_k, int fade_ms)
+{
+    return dmx_set_light_ct_ex(channel, brightness_percent, color_temp_k, fade_ms, NULL, NULL, NULL, NULL);
+}
+
+dmx_command_result_t dmx_set_light_ct_ex(int channel, int brightness_percent, int color_temp_k, int fade_ms,
+                                        int *out_ch_ww, int *out_ch_cw,
+                                        uint8_t *out_val_ww, uint8_t *out_val_cw)
 {
     if (!dmx_initialized)
     {
@@ -420,7 +446,17 @@ dmx_command_result_t dmx_set_light_ct(int channel, int brightness_percent, int c
     values[ch_ww - start_ch] = val_ww;
     values[ch_cw - start_ch] = val_cw;
 
-    ESP_LOGI(TAG, "Light CT %dK, Brightness %d%% → WW=%d (CH%d), CW=%d (CH%d)",
+    if (out_ch_ww)
+        *out_ch_ww = ch_ww;
+    if (out_ch_cw)
+        *out_ch_cw = ch_cw;
+    if (out_val_ww)
+        *out_val_ww = val_ww;
+    if (out_val_cw)
+        *out_val_cw = val_cw;
+
+    // Keep internal details at DEBUG to avoid duplicate INFO logs.
+    ESP_LOGD(TAG, "Light CT %dK, Brightness %d%% → WW=%d (CH%d), CW=%d (CH%d)",
              color_temp_k, brightness_percent, val_ww, ch_ww, val_cw, ch_cw);
 
     return dmx_set_multi_channels(start_ch, values, 2, fade_ms);
@@ -444,6 +480,43 @@ uint8_t dmx_get_channel_value(int channel)
     }
 
     return value;
+}
+
+uint32_t dmx_get_channel_last_change_ms(int channel)
+{
+    if (!dmx_initialized || !dmx_is_channel_valid(channel, 1))
+    {
+        return 0;
+    }
+
+    uint32_t ms = 0;
+    int array_index = channel; // Use channel directly like original (bug compatibility)
+
+    if (xSemaphoreTake(dmx_mutex, pdMS_TO_TICKS(10)) == pdTRUE)
+    {
+        ms = last_change_ms[array_index];
+        xSemaphoreGive(dmx_mutex);
+    }
+
+    return ms;
+}
+
+uint32_t dmx_get_last_change_ms(void)
+{
+    if (!dmx_initialized)
+    {
+        return 0;
+    }
+
+    uint32_t ms = 0;
+
+    if (xSemaphoreTake(dmx_mutex, pdMS_TO_TICKS(10)) == pdTRUE)
+    {
+        ms = last_change_any_ms;
+        xSemaphoreGive(dmx_mutex);
+    }
+
+    return ms;
 }
 
 bool dmx_is_channel_fading(int channel)
@@ -498,6 +571,10 @@ static dmx_command_result_t start_fade(int array_index, uint8_t value, int durat
         fade_states[array_index].duration_ms = duration_ms;
         fade_states[array_index].start_time = xTaskGetTickCount();
         fade_states[array_index].active = true;
+
+        uint32_t ms = now_ms();
+        last_change_ms[array_index] = ms;
+        last_change_any_ms = ms;
         xSemaphoreGive(dmx_mutex);
         return DMX_CMD_SUCCESS;
     }
