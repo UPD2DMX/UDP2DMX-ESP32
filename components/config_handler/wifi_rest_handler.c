@@ -4,6 +4,8 @@
 #include "esp_wifi.h"
 #include "esp_netif.h"
 #include "esp_timer.h"
+#include "esp_app_desc.h"
+#include "esp_ota_ops.h"
 #include "cJSON.h"
 #include <stdio.h>
 #include <string.h>
@@ -316,8 +318,16 @@ esp_err_t system_info_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
+    const esp_app_desc_t *app_desc = esp_app_get_description();
+    const esp_partition_t *running = esp_ota_get_running_partition();
+
     cJSON_AddStringToObject(root, "hostname", "udp2dmx");
     cJSON_AddNumberToObject(root, "uptime_seconds", esp_timer_get_time() / 1000000);
+    cJSON_AddStringToObject(root, "app_version", app_desc ? app_desc->version : "unknown");
+    cJSON_AddStringToObject(root, "idf_version", app_desc ? app_desc->idf_ver : esp_get_idf_version());
+    cJSON_AddStringToObject(root, "app_build_time", app_desc ? app_desc->time : "");
+    cJSON_AddStringToObject(root, "app_build_date", app_desc ? app_desc->date : "");
+    cJSON_AddStringToObject(root, "running_partition", (running && running->label) ? running->label : "");
     cJSON_AddStringToObject(root, "connection_type", get_connection_type_string());
     cJSON_AddBoolToObject(root, "wifi_connected", wifi_is_connected());
     cJSON_AddBoolToObject(root, "lan_connected", my_ethernet_is_connected());

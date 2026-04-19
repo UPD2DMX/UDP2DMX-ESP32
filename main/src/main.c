@@ -21,6 +21,7 @@
 #include "my_config.h"
 #include "config_handler.h"
 #include "dmx_status_http.h"
+#include "ota_http.h"
 
 #ifdef CONFIG_ENABLE_ETHERNET
 #include "my_ethernet.h"
@@ -253,6 +254,9 @@ static esp_err_t init_network_services(void)
     // Register DMX status page on the same HTTP server
     httpd_handle_t server = config_handler_get_server();
     dmx_status_http_register_handlers(server);
+
+    // Register OTA handlers (firmware upload + rollback)
+    ota_http_register_handlers(server);
 
     // Signal successful startup
     my_led_blink(2, 200);

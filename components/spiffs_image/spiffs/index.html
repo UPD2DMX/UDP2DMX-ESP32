@@ -256,6 +256,10 @@
                 <span class="status-label">IP Address:</span>
                 <span class="status-value" id="ipValue">-</span>
             </div>
+            <div class="status-item">
+                <span class="status-label">Version:</span>
+                <span class="status-value" id="versionValue">-</span>
+            </div>
         </div>
 
         <form id="wifiForm">
@@ -303,19 +307,29 @@
 
         <div class="divider"></div>
 
-        <button type="button" class="button-secondary" id="rebootBtn">⚡ Reboot ESP32</button>
-
-        <div class="divider"></div>
-
-        <h3 style="margin-bottom: 15px;">Debug</h3>
-        <button type="button" class="button-secondary" id="dmxStatusBtn">🔎 DMX Status</button>
-
-        <div class="divider"></div>
-
         <h3 style="margin-bottom: 15px;">Configuration</h3>
         <button type="button" class="button-secondary" id="downloadBtn">⬇️ Download Config</button>
         <button type="button" class="button-secondary" id="uploadBtn">⬆️ Upload Config</button>
         <input type="file" id="fileInput" accept=".json" style="display: none;">
+
+        <div class="divider"></div>
+
+        <h3 style="margin-bottom: 15px;">Debug</h3>
+        <button type="button" class="button-secondary" id="rebootBtn">⚡ Reboot ESP32</button>
+        <button type="button" class="button-secondary" id="dmxStatusBtn">🔎 DMX Status</button>
+
+        <div class="form-group" style="margin-top: 15px;">
+            <label for="fwFile">Firmware (.bin)</label>
+            <input type="file" id="fwFile" accept=".bin" />
+        </div>
+        <button type="button" class="button-secondary" id="fwUploadBtn">⬆️ Upload Firmware (OTA)</button>
+        <button type="button" class="button-secondary" id="fwRollbackBtn">⏪ Rollback (previous OTA)</button>
+
+        <div class="form-group" style="margin-top: 15px;">
+            <label for="spiffsFile">Web UI (SPIFFS Image)</label>
+            <input type="file" id="spiffsFile" accept=".bin" />
+        </div>
+        <button type="button" class="button-secondary" id="spiffsUploadBtn">⬆️ Upload Web UI (SPIFFS)</button>
 
         <div class="footer">
             <p><small>Status updates on page load</small></p>
@@ -332,6 +346,11 @@
         const saveBtn = document.getElementById('saveBtn');
         const rebootBtn = document.getElementById('rebootBtn');
         const dmxStatusBtn = document.getElementById('dmxStatusBtn');
+        const fwFile = document.getElementById('fwFile');
+        const fwUploadBtn = document.getElementById('fwUploadBtn');
+        const fwRollbackBtn = document.getElementById('fwRollbackBtn');
+        const spiffsFile = document.getElementById('spiffsFile');
+        const spiffsUploadBtn = document.getElementById('spiffsUploadBtn');
         const downloadBtn = document.getElementById('downloadBtn');
         const uploadBtn = document.getElementById('uploadBtn');
         const fileInput = document.getElementById('fileInput');
@@ -356,6 +375,103 @@
 
         dmxStatusBtn.addEventListener('click', function () {
             window.location.href = `${API_BASE}/dmx/status`;
+        });
+
+        fwUploadBtn.addEventListener('click', async function () {
+            if (!fwFile.files || fwFile.files.length === 0) {
+                showAlert('Please select a .bin firmware file first', 'error');
+                return;
+            }
+
+            const file = fwFile.files[0];
+            if (!confirm(`Upload firmware "${file.name}" (${Math.round(file.size / 1024)} KB) and reboot?`)) {
+                return;
+            }
+
+            try {
+                fwUploadBtn.disabled = true;
+                fwUploadBtn.innerHTML = '<span class="spinner"></span> Uploading...';
+
+                const resp = await fetch(`${API_BASE}/api/ota/upload`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/octet-stream'
+                    },
+                    body: file
+                });
+
+                const text = await resp.text();
+                if (!resp.ok) throw new Error(text || 'OTA upload failed');
+
+                showAlert(text || 'OK - rebooting', 'success');
+            } catch (e) {
+                console.error(e);
+                showAlert(`OTA upload error: ${e.message}`, 'error');
+            } finally {
+                fwUploadBtn.disabled = false;
+                fwUploadBtn.innerHTML = '⬆️ Upload Firmware (OTA)';
+            }
+        });
+
+        fwRollbackBtn.addEventListener('click', async function () {
+            if (!confirm('Rollback to previous OTA slot and reboot?')) {
+                return;
+            }
+
+            try {
+                fwRollbackBtn.disabled = true;
+                fwRollbackBtn.innerHTML = '<span class="spinner"></span> Rolling back...';
+
+                const resp = await fetch(`${API_BASE}/api/ota/rollback`, {
+                    method: 'POST'
+                });
+                const text = await resp.text();
+                if (!resp.ok) throw new Error(text || 'Rollback failed');
+
+                showAlert(text || 'OK - rebooting', 'success');
+            } catch (e) {
+                console.error(e);
+                showAlert(`Rollback error: ${e.message}`, 'error');
+            } finally {
+                fwRollbackBtn.disabled = false;
+                fwRollbackBtn.innerHTML = '⏪ Rollback (previous OTA)';
+            }
+        });
+
+        spiffsUploadBtn.addEventListener('click', async function () {
+            if (!spiffsFile.files || spiffsFile.files.length === 0) {
+                showAlert('Please select a SPIFFS .bin image first', 'error');
+                return;
+            }
+
+            const file = spiffsFile.files[0];
+            if (!confirm(`Upload Web UI (SPIFFS) "${file.name}" (${Math.round(file.size / 1024)} KB) and reboot?`)) {
+                return;
+            }
+
+            try {
+                spiffsUploadBtn.disabled = true;
+                spiffsUploadBtn.innerHTML = '<span class="spinner"></span> Uploading...';
+
+                const resp = await fetch(`${API_BASE}/api/ota/spiffs`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/octet-stream'
+                    },
+                    body: file
+                });
+
+                const text = await resp.text();
+                if (!resp.ok) throw new Error(text || 'SPIFFS upload failed');
+
+                showAlert(text || 'OK - rebooting', 'success');
+            } catch (e) {
+                console.error(e);
+                showAlert(`SPIFFS upload error: ${e.message}`, 'error');
+            } finally {
+                spiffsUploadBtn.disabled = false;
+                spiffsUploadBtn.innerHTML = '⬆️ Upload Web UI (SPIFFS)';
+            }
         });
 
         downloadBtn.addEventListener('click', async function () {
@@ -440,6 +556,9 @@
 
                 document.getElementById('statusValue').textContent = statusText;
                 document.getElementById('ipValue').textContent = data.ip_address;
+                const version = data.app_version || '-';
+                const slot = data.running_partition ? ` (${data.running_partition})` : '';
+                document.getElementById('versionValue').textContent = `${version}${slot}`;
             } catch (error) {
                 console.error('Error loading status:', error);
                 document.getElementById('statusValue').textContent = 'Error loading';
