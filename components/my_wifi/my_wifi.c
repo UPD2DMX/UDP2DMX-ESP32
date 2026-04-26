@@ -165,8 +165,8 @@ void my_wifi_set_hostname(const char *new_hostname)
 
     // Update mDNS (reinitialize to ensure hostname is updated on all interfaces)
     mdns_free();
-    vTaskDelay(pdMS_TO_TICKS(100));  // Small delay
-    
+    vTaskDelay(pdMS_TO_TICKS(100)); // Small delay
+
     if (mdns_init() == ESP_OK)
     {
         mdns_hostname_set(current_hostname);
@@ -191,6 +191,11 @@ void start_mdns_service(void)
 bool my_wifi_is_connected(void)
 {
     return wifi_connected;
+}
+
+const char *my_wifi_get_hostname(void)
+{
+    return current_hostname;
 }
 
 static void connect_to_wifi_config(const wifi_config_nvs_t *config)
@@ -221,9 +226,17 @@ static void connect_to_wifi_config(const wifi_config_nvs_t *config)
         {
             esp_netif_dhcpc_stop(netif);
 
+            uint32_t subnet_mask = config->subnet_mask;
+            if (subnet_mask == 0)
+            {
+                // Default to /24 to avoid esp_netif_handlers: invalid static ip
+                subnet_mask = 0xFFFFFF00; // 255.255.255.0 (network byte order)
+                ESP_LOGW(TAG, "Subnet mask not set; defaulting to 255.255.255.0");
+            }
+
             esp_netif_ip_info_t ip_info = {
                 .ip.addr = config->static_ip,
-                .netmask.addr = config->subnet_mask,
+                .netmask.addr = subnet_mask,
                 .gw.addr = config->gateway,
             };
             esp_netif_set_ip_info(netif, &ip_info);
@@ -276,7 +289,7 @@ void my_wifi_start_config_mode(const char *ssid, const char *password)
     // Stop and deinit existing WiFi
     esp_wifi_stop();
     vTaskDelay(pdMS_TO_TICKS(100));
-    
+
     // Deinit WiFi completely to reset state
     esp_wifi_deinit();
     vTaskDelay(pdMS_TO_TICKS(100));
@@ -343,7 +356,14 @@ static void on_wifi_event(void *arg, esp_event_base_t event_base,
         my_led_set_connection_type(CONNECTION_TYPE_NONE);
         is_connecting = false;
         wifi_connected = false;
-        xTaskNotifyGive(reconnect_task_handle);
+        if (reconnect_task_handle)
+        {
+            xTaskNotifyGive(reconnect_task_handle);
+        }
+        else
+        {
+            ESP_LOGD(TAG, "Reconnect task not running; not notifying");
+        }
     }
     else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP)
     {

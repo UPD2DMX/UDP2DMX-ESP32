@@ -34,19 +34,19 @@ static bool wifi_is_connected(void)
 static void wifi_get_ip_address(char *ip_str, size_t len)
 {
     esp_netif_t *netif = NULL;
-    
+
     // Try Ethernet first
     if (my_ethernet_is_connected())
     {
         netif = esp_netif_get_handle_from_ifkey("ETH_DEF");
     }
-    
+
     // Fall back to WiFi if Ethernet not connected
     if (!netif)
     {
         netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
     }
-    
+
     if (!netif)
     {
         strncpy(ip_str, "0.0.0.0", len);
@@ -135,30 +135,38 @@ esp_err_t wifi_get_config_handler(httpd_req_t *req)
     cJSON *primary_wifi = cJSON_CreateObject();
     cJSON_AddStringToObject(primary_wifi, "ssid", wifi_config.ssid);
     cJSON_AddBoolToObject(primary_wifi, "use_dhcp", wifi_config.use_dhcp);
-    
+
     // Convert static IP from uint32_t to string
     char ip_buf[16];
     snprintf(ip_buf, sizeof(ip_buf), "%lu.%lu.%lu.%lu",
-        (wifi_config.static_ip >> 0) & 0xFF,
-        (wifi_config.static_ip >> 8) & 0xFF,
-        (wifi_config.static_ip >> 16) & 0xFF,
-        (wifi_config.static_ip >> 24) & 0xFF);
+             (wifi_config.static_ip >> 0) & 0xFF,
+             (wifi_config.static_ip >> 8) & 0xFF,
+             (wifi_config.static_ip >> 16) & 0xFF,
+             (wifi_config.static_ip >> 24) & 0xFF);
     cJSON_AddStringToObject(primary_wifi, "static_ip", ip_buf);
 
     char gateway_buf[16];
     snprintf(gateway_buf, sizeof(gateway_buf), "%lu.%lu.%lu.%lu",
-        (wifi_config.gateway >> 0) & 0xFF,
-        (wifi_config.gateway >> 8) & 0xFF,
-        (wifi_config.gateway >> 16) & 0xFF,
-        (wifi_config.gateway >> 24) & 0xFF);
+             (wifi_config.gateway >> 0) & 0xFF,
+             (wifi_config.gateway >> 8) & 0xFF,
+             (wifi_config.gateway >> 16) & 0xFF,
+             (wifi_config.gateway >> 24) & 0xFF);
     cJSON_AddStringToObject(primary_wifi, "gateway", gateway_buf);
+
+    char subnet_buf[16];
+    snprintf(subnet_buf, sizeof(subnet_buf), "%lu.%lu.%lu.%lu",
+             (wifi_config.subnet_mask >> 0) & 0xFF,
+             (wifi_config.subnet_mask >> 8) & 0xFF,
+             (wifi_config.subnet_mask >> 16) & 0xFF,
+             (wifi_config.subnet_mask >> 24) & 0xFF);
+    cJSON_AddStringToObject(primary_wifi, "subnet_mask", subnet_buf);
 
     char dns_buf[16];
     snprintf(dns_buf, sizeof(dns_buf), "%lu.%lu.%lu.%lu",
-        (wifi_config.dns >> 0) & 0xFF,
-        (wifi_config.dns >> 8) & 0xFF,
-        (wifi_config.dns >> 16) & 0xFF,
-        (wifi_config.dns >> 24) & 0xFF);
+             (wifi_config.dns >> 0) & 0xFF,
+             (wifi_config.dns >> 8) & 0xFF,
+             (wifi_config.dns >> 16) & 0xFF,
+             (wifi_config.dns >> 24) & 0xFF);
     cJSON_AddStringToObject(primary_wifi, "dns", dns_buf);
 
     cJSON_AddItemToObject(root, "primary_wifi", primary_wifi);
@@ -213,6 +221,7 @@ esp_err_t wifi_post_config_handler(httpd_req_t *req)
     cJSON *password_item = cJSON_GetObjectItem(root, "password");
     cJSON *use_dhcp_item = cJSON_GetObjectItem(root, "use_dhcp");
     cJSON *static_ip_item = cJSON_GetObjectItem(root, "static_ip");
+    cJSON *subnet_mask_item = cJSON_GetObjectItem(root, "subnet_mask");
     cJSON *gateway_item = cJSON_GetObjectItem(root, "gateway");
     cJSON *dns_item = cJSON_GetObjectItem(root, "dns");
 
@@ -248,6 +257,18 @@ esp_err_t wifi_post_config_handler(httpd_req_t *req)
             wifi_config.static_ip = (ip[3] << 24) | (ip[2] << 16) | (ip[1] << 8) | ip[0];
         }
 
+        if (subnet_mask_item && subnet_mask_item->valuestring && strlen(subnet_mask_item->valuestring) > 0)
+        {
+            unsigned int ip[4];
+            sscanf(subnet_mask_item->valuestring, "%u.%u.%u.%u", &ip[3], &ip[2], &ip[1], &ip[0]);
+            wifi_config.subnet_mask = (ip[3] << 24) | (ip[2] << 16) | (ip[1] << 8) | ip[0];
+        }
+        else
+        {
+            // Default to /24 if not provided by client
+            wifi_config.subnet_mask = 0xFFFFFF00; // 255.255.255.0 (network byte order)
+        }
+
         if (gateway_item && gateway_item->valuestring)
         {
             unsigned int ip[4];
@@ -272,14 +293,14 @@ esp_err_t wifi_post_config_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "WiFi configuration saved: SSID=%s, DHCP=%s", wifi_config.ssid, 
+    ESP_LOGI(TAG, "WiFi configuration saved: SSID=%s, DHCP=%s", wifi_config.ssid,
              wifi_config.use_dhcp ? "yes" : "no");
 
     // Send response
     cJSON *response = cJSON_CreateObject();
     cJSON_AddBoolToObject(response, "success", true);
     cJSON_AddStringToObject(response, "message", "WiFi configuration saved. Restarting...");
-    
+
     char *json_str = cJSON_Print(response);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, (const char *)json_str, HTTPD_RESP_USE_STRLEN);
@@ -301,7 +322,7 @@ esp_err_t system_info_handler(httpd_req_t *req)
     wifi_config_t wifi_config;
     char ip_str[16] = "0.0.0.0";
     char mac_str[18] = "";
-    
+
     esp_wifi_get_config(WIFI_IF_STA, &wifi_config);
     wifi_get_ip_address(ip_str, sizeof(ip_str));
 
@@ -321,7 +342,8 @@ esp_err_t system_info_handler(httpd_req_t *req)
     const esp_app_desc_t *app_desc = esp_app_get_description();
     const esp_partition_t *running = esp_ota_get_running_partition();
 
-    cJSON_AddStringToObject(root, "hostname", "udp2dmx");
+    const char *hostname = my_wifi_get_hostname();
+    cJSON_AddStringToObject(root, "hostname", (hostname && hostname[0]) ? hostname : "udp2dmx");
     cJSON_AddNumberToObject(root, "uptime_seconds", esp_timer_get_time() / 1000000);
     cJSON_AddStringToObject(root, "app_version", app_desc ? app_desc->version : "unknown");
     cJSON_AddStringToObject(root, "idf_version", app_desc ? app_desc->idf_ver : esp_get_idf_version());
@@ -355,7 +377,7 @@ esp_err_t system_reboot_handler(httpd_req_t *req)
     cJSON *response = cJSON_CreateObject();
     cJSON_AddBoolToObject(response, "success", true);
     cJSON_AddStringToObject(response, "message", "Restarting in 1 second...");
-    
+
     char *json_str = cJSON_Print(response);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, (const char *)json_str, HTTPD_RESP_USE_STRLEN);
@@ -381,8 +403,7 @@ void wifi_rest_register_handlers(httpd_handle_t server)
         .uri = "/api/wifi",
         .method = HTTP_GET,
         .handler = wifi_get_config_handler,
-        .user_ctx = NULL
-    };
+        .user_ctx = NULL};
     httpd_register_uri_handler(server, &get_wifi_uri);
 
     // POST /api/wifi
@@ -390,8 +411,7 @@ void wifi_rest_register_handlers(httpd_handle_t server)
         .uri = "/api/wifi",
         .method = HTTP_POST,
         .handler = wifi_post_config_handler,
-        .user_ctx = NULL
-    };
+        .user_ctx = NULL};
     httpd_register_uri_handler(server, &post_wifi_uri);
 
     // GET /api/system
@@ -399,8 +419,7 @@ void wifi_rest_register_handlers(httpd_handle_t server)
         .uri = "/api/system",
         .method = HTTP_GET,
         .handler = system_info_handler,
-        .user_ctx = NULL
-    };
+        .user_ctx = NULL};
     httpd_register_uri_handler(server, &get_system_uri);
 
     // POST /api/system/reboot
@@ -408,8 +427,7 @@ void wifi_rest_register_handlers(httpd_handle_t server)
         .uri = "/api/system/reboot",
         .method = HTTP_POST,
         .handler = system_reboot_handler,
-        .user_ctx = NULL
-    };
+        .user_ctx = NULL};
     httpd_register_uri_handler(server, &reboot_uri);
 
     ESP_LOGI(TAG, "WiFi REST API handlers registered");

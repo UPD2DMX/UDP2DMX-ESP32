@@ -264,18 +264,18 @@
 
         <form id="wifiForm">
             <div class="form-group">
-                <label for="hostname">Hostname *</label>
-                <input type="text" id="hostname" name="hostname" placeholder="e.g. udp2dmx" required>
+                <label for="hostname">Hostname</label>
+                <input type="text" id="hostname" name="hostname" placeholder="e.g. udp2dmx">
             </div>
 
             <div class="form-group">
-                <label for="ssid">WiFi SSID *</label>
-                <input type="text" id="ssid" name="ssid" placeholder="e.g. MyNetwork" required>
+                <label for="ssid">WiFi SSID</label>
+                <input type="text" id="ssid" name="ssid" placeholder="e.g. MyNetwork">
             </div>
 
             <div class="form-group">
-                <label for="password">Password *</label>
-                <input type="password" id="password" name="password" placeholder="Enter password" required>
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" placeholder="Enter password">
             </div>
 
             <div class="checkbox-group">
@@ -302,7 +302,8 @@
                 </div>
             </div>
 
-            <button type="submit" id="saveBtn">💾 Save & Reboot</button>
+            <button type="button" id="hostnameSaveBtn">💾 Save Hostname</button>
+            <button type="button" id="saveBtn">💾 Save WiFi & Reboot</button>
         </form>
 
         <div class="divider"></div>
@@ -343,6 +344,7 @@
         const form = document.getElementById('wifiForm');
         const useDhcpCheckbox = document.getElementById('useDhcp');
         const staticIpSection = document.getElementById('staticIpSection');
+        const hostnameSaveBtn = document.getElementById('hostnameSaveBtn');
         const saveBtn = document.getElementById('saveBtn');
         const rebootBtn = document.getElementById('rebootBtn');
         const dmxStatusBtn = document.getElementById('dmxStatusBtn');
@@ -362,9 +364,12 @@
             staticIpSection.classList.toggle('active', !this.checked);
         });
 
-        form.addEventListener('submit', async function (e) {
-            e.preventDefault();
-            await saveWifiConfig();
+        hostnameSaveBtn.addEventListener('click', async function () {
+            await saveHostnameOnly();
+        });
+
+        saveBtn.addEventListener('click', async function () {
+            await saveWifiOnly();
         });
 
         rebootBtn.addEventListener('click', async function () {
@@ -505,7 +510,8 @@
                 btn.innerHTML = '<span class="spinner"></span> Processing...';
             } else {
                 btn.disabled = false;
-                btn.innerHTML = btn === saveBtn ? '💾 Save & Reboot' :
+                btn.innerHTML = btn === hostnameSaveBtn ? '💾 Save Hostname' :
+                    btn === saveBtn ? '💾 Save WiFi & Reboot' :
                     btn === rebootBtn ? '⚡ Reboot ESP32' : '🔄 Refresh Status';
             }
         }
@@ -556,6 +562,9 @@
 
                 document.getElementById('statusValue').textContent = statusText;
                 document.getElementById('ipValue').textContent = data.ip_address;
+                if (data.hostname) {
+                    document.getElementById('hostname').value = data.hostname;
+                }
                 const version = data.app_version || '-';
                 const slot = data.running_partition ? ` (${data.running_partition})` : '';
                 document.getElementById('versionValue').textContent = `${version}${slot}`;
@@ -565,49 +574,17 @@
             }
         }
 
-        async function saveWifiConfig() {
-            const config = {
-                hostname: document.getElementById('hostname').value,
-                ssid: document.getElementById('ssid').value,
-                password: document.getElementById('password').value,
-                use_dhcp: document.getElementById('useDhcp').checked,
-                static_ip: document.getElementById('staticIp').value || '0.0.0.0',
-                gateway: document.getElementById('gateway').value || '0.0.0.0',
-                dns: document.getElementById('dns').value || '8.8.8.8'
-            };
-
-            // Validation
-            if (!config.hostname || !config.ssid || !config.password) {
-                showAlert('Hostname, SSID and Password are required', 'error');
+        async function saveHostnameOnly() {
+            const hostname = (document.getElementById('hostname').value || '').trim();
+            if (!hostname) {
+                showAlert('Hostname is required', 'error');
                 return;
             }
 
-            if (!config.use_dhcp) {
-                if (!isValidIP(config.static_ip) || !isValidIP(config.gateway)) {
-                    showAlert('Invalid static IP addresses', 'error');
-                    return;
-                }
-            }
-
-            setButtonLoading(saveBtn, true);
+            setButtonLoading(hostnameSaveBtn, true);
 
             try {
-                // Save WiFi config to NVS
-                const wifiResponse = await fetch(`${API_BASE}/api/wifi`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(config)
-                });
-
-                if (!wifiResponse.ok) {
-                    const error = await wifiResponse.text();
-                    throw new Error(error);
-                }
-
-                // Save hostname to SPIFFS config (as patch)
-                const hostnameUpdate = { hostname: config.hostname };
+                const hostnameUpdate = { hostname };
                 const patchResponse = await fetch(`${API_BASE}/config/patch`, {
                     method: 'POST',
                     headers: {
@@ -617,10 +594,70 @@
                 });
 
                 if (!patchResponse.ok) {
-                    console.warn('Failed to save hostname to SPIFFS, but WiFi config saved');
+                    const error = await patchResponse.text();
+                    throw new Error(error || 'Failed to save hostname');
                 }
 
-                showAlert('✅ Configuration saved! ESP is rebooting...', 'success');
+                showAlert('✅ Hostname saved', 'success');
+
+                // Refresh status to display current hostname
+                await loadSystemStatus();
+            } catch (error) {
+                console.error('Error saving hostname:', error);
+                showAlert(`Error: ${error.message}`, 'error');
+            } finally {
+                setButtonLoading(hostnameSaveBtn, false);
+            }
+        }
+
+        async function saveWifiOnly() {
+            const ssid = (document.getElementById('ssid').value || '').trim();
+            const password = document.getElementById('password').value || '';
+            const useDhcp = document.getElementById('useDhcp').checked;
+            const staticIp = (document.getElementById('staticIp').value || '').trim();
+            const gateway = (document.getElementById('gateway').value || '').trim();
+            const dns = (document.getElementById('dns').value || '').trim();
+
+            if (!ssid || !password) {
+                showAlert('SSID and Password are required to save WiFi settings', 'error');
+                return;
+            }
+
+            if (!useDhcp) {
+                const resolvedStaticIp = staticIp || '0.0.0.0';
+                const resolvedGateway = gateway || '0.0.0.0';
+                if (!isValidIP(resolvedStaticIp) || !isValidIP(resolvedGateway)) {
+                    showAlert('Invalid static IP addresses', 'error');
+                    return;
+                }
+            }
+
+            setButtonLoading(saveBtn, true);
+
+            try {
+                const wifiConfig = {
+                    ssid,
+                    password,
+                    use_dhcp: useDhcp,
+                    static_ip: staticIp || '0.0.0.0',
+                    gateway: gateway || '0.0.0.0',
+                    dns: dns || '8.8.8.8'
+                };
+
+                const wifiResponse = await fetch(`${API_BASE}/api/wifi`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(wifiConfig)
+                });
+
+                if (!wifiResponse.ok) {
+                    const error = await wifiResponse.text();
+                    throw new Error(error || 'Failed to save WiFi config');
+                }
+
+                showAlert('✅ WiFi saved! ESP is rebooting...', 'success');
 
                 // Disable form during restart
                 form.style.opacity = '0.5';
@@ -630,7 +667,7 @@
                     location.reload();
                 }, 3000);
             } catch (error) {
-                console.error('Error saving config:', error);
+                console.error('Error saving WiFi:', error);
                 showAlert(`Error: ${error.message}`, 'error');
                 setButtonLoading(saveBtn, false);
             }

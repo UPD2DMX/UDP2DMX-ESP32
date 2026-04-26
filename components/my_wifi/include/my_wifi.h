@@ -11,21 +11,23 @@ extern "C"
     /**
      * @brief WiFi Konfiguration für NVS
      */
-    typedef struct {
-        char ssid[32];              // Primary WiFi SSID
-        char password[64];          // Primary WiFi Password
-        uint8_t auth_mode;          // WiFi Auth Mode
-        bool use_dhcp;              // true = DHCP, false = static IP
-        uint32_t static_ip;         // Static IP (host byte order)
-        uint32_t subnet_mask;       // Subnet Mask
-        uint32_t gateway;           // Gateway IP
-        uint32_t dns;               // DNS Server
+    typedef struct
+    {
+        char ssid[32];        // Primary WiFi SSID
+        char password[64];    // Primary WiFi Password
+        uint8_t auth_mode;    // WiFi Auth Mode
+        bool use_dhcp;        // true = DHCP, false = static IP
+        uint32_t static_ip;   // Static IP (host byte order)
+        uint32_t subnet_mask; // Subnet Mask
+        uint32_t gateway;     // Gateway IP
+        uint32_t dns;         // DNS Server
     } wifi_config_nvs_t;
 
     // Core WiFi Functions
     void my_wifi_init(void);
     bool my_wifi_is_connected(void);
     void my_wifi_set_hostname(const char *new_hostname);
+    const char *my_wifi_get_hostname(void);
 
     // NVS WiFi Configuration Functions
     /**
